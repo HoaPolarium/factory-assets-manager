@@ -1,6 +1,3 @@
 flask
-json
-os
-io
+gunicorn
 openpyxl
-datetime
