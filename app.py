@@ -4,7 +4,9 @@ from datetime import datetime
 from openpyxl import Workbook
 
 app = Flask(__name__)
-DATA_FILE = '/var/data/assets.json'
+DATA_DIR = "/var/data"
+os.makedirs(DATA_DIR, exist_ok=True)
+DATA_FILE = os.path.join(DATA_DIR, "assets.json")
 
 # ---------- Data helpers ----------
 
