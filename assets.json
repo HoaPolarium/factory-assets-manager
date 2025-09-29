@@ -1,3 +1,18 @@
 {
-  "assets": []
+  "assets": [
+    {
+      "index": 1,
+      "code": "b",
+      "name": "a",
+      "brand": "a",
+      "serial": "a",
+      "location": "a",
+      "status": "OK",
+      "import_date": "2025-09-24",
+      "warranty_end": "2025-10-04",
+      "description": "a",
+      "coc": "a",
+      "history": []
+    }
+  ]
 }
