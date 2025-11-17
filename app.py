@@ -11,7 +11,7 @@ from openpyxl import Workbook
 ####################
 app = Flask(__name__)
 # use DATABASE_URL env var if present, otherwise sqlite file
-DATABASE_URL = os.environ.get('DATABASE_URL') or os.environ.get('SQLALCHEMY_DATABASE_URI') or 'sqlite:///assets.db'
+DATABASE_URL = os.environ.get('DATABASE_URL')
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -699,10 +699,11 @@ def index_page():
 # Startup: create tables if not exist
 ####################
 with app.app_context():
-    db.create_all()
+    # db.create_all()
     # ensure idx values exist for existing rows
     recompute_indexes()
 
 if __name__ == '__main__':
     print('Run server at http://127.0.0.1:5000, DB =', DATABASE_URL)
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
