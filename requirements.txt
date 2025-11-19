@@ -1,6 +1,4 @@
-flask
-flask_sqlalchemy
-sqlalchemy
-psycopg2-binary
+Flask
+supabase
 python-dotenv
 gunicorn

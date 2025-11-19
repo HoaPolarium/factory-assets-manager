@@ -1,330 +1,74 @@
-# app.py
-from flask import Flask, request, jsonify, render_template_string, send_file
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func, or_
-import os, io
+# flask_app_supabase_fixed.py
+"""
+Flask app: Assets management using Supabase (compatible with Supabase Python Client v2)
+Frontend HTML is embedded (the one you provided).
+"""
+import os
+import tempfile
 from datetime import datetime, date
-from openpyxl import Workbook
+from flask import Flask, request, jsonify, render_template_string, send_file
+from supabase import create_client
+import openpyxl
 
-####################
-# Configuration
-####################
 app = Flask(__name__)
-# use DATABASE_URL env var if present, otherwise sqlite file
-DATABASE_URL = os.environ.get('DATABASE_URL') or os.environ.get('SQLALCHEMY_DATABASE_URI') or 'sqlite:///assets.db'
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
 
-####################
-# Models
-####################
-class Asset(db.Model):
-    __tablename__ = 'assets'
-    id = db.Column(db.Integer, primary_key=True)           # internal id
-    idx = db.Column(db.Integer, nullable=False)            # STT (index)
-    clc = db.Column(db.String(200), nullable=True)
-    code = db.Column(db.String(200), nullable=False, unique=True)
-    name = db.Column(db.String(500), nullable=False)
-    brand = db.Column(db.String(200), nullable=True)
-    model = db.Column(db.String(200), nullable=True)
-    description = db.Column(db.Text, nullable=True)
-    serial = db.Column(db.String(200), nullable=True)
-    location = db.Column(db.String(200), nullable=True)
-    status = db.Column(db.String(100), nullable=True)
-    import_date = db.Column(db.Date, nullable=True)
-    warranty_end = db.Column(db.Date, nullable=True)
-    history = db.relationship('History', backref='asset', cascade='all, delete-orphan', lazy='joined', order_by="History.id")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Please set SUPABASE_URL and SUPABASE_KEY environment variables")
 
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'index': self.idx,
-            'clc': self.clc or '',
-            'code': self.code,
-            'name': self.name,
-            'brand': self.brand or '',
-            'model': self.model or '',
-            'description': self.description or '',
-            'serial': self.serial or '',
-            'location': self.location or '',
-            'status': self.status or '',
-            'import_date': self.import_date.strftime('%Y-%m-%d') if self.import_date else '',
-            'warranty_end': self.warranty_end.strftime('%Y-%m-%d') if self.warranty_end else '',
-            'history': [h.to_dict() for h in sorted(self.history, key=lambda x: (x.type, x.seq) )]
-        }
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-class History(db.Model):
-    __tablename__ = 'history'
-    id = db.Column(db.Integer, primary_key=True)
-    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
-    type = db.Column(db.String(20), nullable=False)  # 'fault' or 'calib'
-    seq = db.Column(db.Integer, nullable=False)      # sequence per type for that asset
-    # fault fields
-    fault = db.Column(db.String(500), nullable=True)
-    fault_date = db.Column(db.Date, nullable=True)
-    sent_date = db.Column(db.Date, nullable=True)
-    return_date = db.Column(db.Date, nullable=True)
-    # calib fields
-    calib_date = db.Column(db.Date, nullable=True)
-    expire_date = db.Column(db.Date, nullable=True)
-
-    def to_dict(self):
-        d = {'type': self.type, 'seq': self.seq}
-        if self.type == 'fault':
-            d.update({
-                'fault': self.fault or '',
-                'fault_date': self.fault_date.strftime('%Y-%m-%d') if self.fault_date else '',
-                'sent_date': self.sent_date.strftime('%Y-%m-%d') if self.sent_date else '',
-                'return_date': self.return_date.strftime('%Y-%m-%d') if self.return_date else ''
-            })
-        else:
-            d.update({
-                'calib_date': self.calib_date.strftime('%Y-%m-%d') if self.calib_date else '',
-                'expire_date': self.expire_date.strftime('%Y-%m-%d') if self.expire_date else ''
-            })
-        return d
-
-####################
+# -----------------------
 # Helpers
-####################
-def parse_date(d):
-    if not d:
-        return None
-    if isinstance(d, date):
-        return d
+# -----------------------
+def next_index():
+    """Return next index (index_num)"""
     try:
-        return datetime.strptime(d, '%Y-%m-%d').date()
-    except Exception:
-        return None
+        res = supabase.table("assets").select("index_num").order("index_num", desc=True).limit(1).execute()
+        if getattr(res, "data", None) and len(res.data) > 0 and res.data[0].get("index_num"):
+            return res.data[0]["index_num"] + 1
+        return 1
+    except Exception as e:
+        app.logger.error("next_index error: %s", e)
+        return 1
 
-def recompute_indexes():
-    """Recompute idx (STT) for all assets ordered by id ascending."""
-    assets = Asset.query.order_by(Asset.id).all()
-    for i, a in enumerate(assets, start=1):
-        a.idx = i
-    db.session.commit()
-
-def find_asset_by_identifier_value(identifier):
+def find_asset_by_identifier(identifier):
+    """Find asset by code or clc or serial (exact match). Return asset dict or None."""
     if not identifier:
         return None
-    id_norm = identifier.strip()
-    # search case-insensitive for code/clc/serial
-    return Asset.query.filter(
-        or_(
-            func.lower(Asset.code) == id_norm.lower(),
-            func.lower(Asset.clc) == id_norm.lower(),
-            func.lower(Asset.serial) == id_norm.lower()
-        )
-    ).first()
+    identifier = identifier.strip()
+    # try code
+    try:
+        res = supabase.table("assets").select("*").or_(f"code.eq.{identifier},clc.eq.{identifier},serial.eq.{identifier}").limit(1).execute()
+    except Exception as e:
+        app.logger.error("find_asset error: %s", e)
+        return None
+    return res.data[0] if getattr(res, "data", None) else None
 
-####################
-# API endpoints
-####################
-
-@app.route('/api/assets', methods=['GET'])
-def api_list_assets():
-    assets = Asset.query.order_by(Asset.idx).all()
-    return jsonify([a.to_dict() for a in assets])
-
-@app.route('/api/assets', methods=['POST'])
-def api_add_asset():
-    payload = request.get_json() or {}
-    required = ['clc','code','name','brand','model','serial','location','status','import_date','warranty_end','description']
-    missing = [k for k in required if not payload.get(k) and payload.get(k) != '']
-    # note: we accept empty-string for description; but other fields require at least ''
-    # Use your original logic: disallow missing (empty)
-    missing = [k for k in required if not payload.get(k)]
-    if missing:
-        return jsonify({'error':'Thiếu thông tin','missing_fields': missing}), 400
-    if Asset.query.filter_by(code=payload['code']).first():
-        return jsonify({'error':'Mã tài sản đã tồn tại'}), 400
-    # create asset
-    last_idx = db.session.query(func.max(Asset.idx)).scalar() or 0
-    a = Asset(
-        idx = (last_idx or 0) + 1,
-        clc = payload.get('clc',''),
-        code = payload.get('code',''),
-        name = payload.get('name',''),
-        brand = payload.get('brand',''),
-        model = payload.get('model',''),
-        description = payload.get('description',''),
-        serial = payload.get('serial',''),
-        location = payload.get('location',''),
-        status = payload.get('status',''),
-        import_date = parse_date(payload.get('import_date')),
-        warranty_end = parse_date(payload.get('warranty_end'))
-    )
-    db.session.add(a)
-    db.session.commit()
-    return jsonify(a.to_dict()), 201
-
-@app.route('/api/assets/<code>', methods=['GET'])
-def api_get_asset(code):
-    a = Asset.query.filter_by(code=code).first()
+def transform_asset_for_frontend(a):
+    """Map DB asset to frontend shape (frontend expects 'index' property)."""
     if not a:
-        return jsonify({'error':'Không tìm thấy mã tài sản'}), 404
-    return jsonify(a.to_dict())
+        return a
+    out = dict(a)  # shallow copy
+    # map index_num -> index for frontend
+    if "index_num" in out:
+        out["index"] = out.get("index_num")
+    else:
+        # keep existing index if any
+        if "index" not in out:
+            out["index"] = None
+    return out
 
-@app.route('/api/assets/<code>', methods=['PUT'])
-def api_update_asset(code):
-    payload = request.get_json() or {}
-    required = ['clc','name','brand','model','description','serial','location','status','import_date','warranty_end']
-    missing = [k for k in required if not payload.get(k)]
-    if missing:
-        return jsonify({'error':'Thiếu thông tin','missing_fields': missing}), 400
-    a = Asset.query.filter_by(code=code).first()
-    if not a:
-        return jsonify({'error':'Không tìm thấy mã tài sản'}), 404
-    a.clc = payload.get('clc','')
-    a.name = payload.get('name','')
-    a.brand = payload.get('brand','')
-    a.model = payload.get('model','')
-    a.description = payload.get('description','')
-    a.serial = payload.get('serial','')
-    a.location = payload.get('location','')
-    a.status = payload.get('status','')
-    a.import_date = parse_date(payload.get('import_date'))
-    a.warranty_end = parse_date(payload.get('warranty_end'))
-    db.session.commit()
-    return jsonify(a.to_dict())
+# -----------------------
+# Routes (API)
+# -----------------------
 
-@app.route('/api/assets', methods=['DELETE'])
-def api_delete_asset_by_identifier():
-    identifier = request.args.get('identifier', '').strip()
-    if not identifier and request.is_json:
-        body = request.get_json()
-        identifier = (body.get('identifier') or '').strip() if isinstance(body, dict) else ''
-    if not identifier:
-        return jsonify({'error':'Thiếu identifier để xóa (code/clc/serial)'}), 400
-    a = find_asset_by_identifier_value(identifier)
-    if not a:
-        return jsonify({'error':'Không tìm thấy tài sản phù hợp'}), 404
-    db.session.delete(a)
-    db.session.commit()
-    recompute_indexes()
-    return jsonify({'ok': True})
+# Serve the provided HTML UI at '/'
+INDEX_HTML = r'''  <!-- (Your full HTML omitted here for brevity in this snippet) -->
+'''  # We will later overwrite with the full template content (below)
 
-@app.route('/api/assets/<code>/history', methods=['GET'])
-def api_get_history(code):
-    a = Asset.query.filter_by(code=code).first()
-    if not a:
-        return jsonify({'error':'Không tìm thấy mã tài sản'}), 404
-    return jsonify([h.to_dict() for h in sorted(a.history, key=lambda x: (x.type, x.seq))])
-
-@app.route('/api/assets/history', methods=['GET'])
-def api_get_history_by_identifier():
-    identifier = request.args.get('identifier', '').strip()
-    if not identifier:
-        return jsonify({'error':'Thiếu identifier'}), 400
-    a = find_asset_by_identifier_value(identifier)
-    if not a:
-        return jsonify({'error':'Không tìm thấy mã tài sản'}), 404
-    return jsonify([h.to_dict() for h in sorted(a.history, key=lambda x: (x.type, x.seq))])
-
-@app.route('/api/assets/<code>/history', methods=['POST'])
-def api_add_history(code):
-    payload = request.get_json() or {}
-    payload['identifier'] = code
-    return _handle_add_history(payload)
-
-@app.route('/api/assets/history', methods=['POST'])
-def api_add_history_by_identifier():
-    payload = request.get_json() or {}
-    return _handle_add_history(payload)
-
-def _handle_add_history(payload):
-    identifier = (payload.get('identifier') or '').strip()
-    payload_type = payload.get('type')
-    if not identifier:
-        return jsonify({'error':'Thiếu identifier (code/clc/serial)'}), 400
-    if payload_type not in ('fault','calib'):
-        return jsonify({'error':'Thiếu hoặc sai type (phải là "fault" hoặc "calib")'}), 400
-    a = find_asset_by_identifier_value(identifier)
-    if not a:
-        return jsonify({'error':'Không tìm thấy mã tài sản'}), 404
-
-    if payload_type == 'fault':
-        required = ['fault','fault_date','sent_date']
-        missing = [k for k in required if not payload.get(k)]
-        if missing:
-            return jsonify({'error':'Thiếu thông tin cho fault','missing_fields': missing}), 400
-        seq = db.session.query(func.count(History.id)).filter_by(asset_id=a.id, type='fault').scalar() or 0
-        seq = seq + 1
-        h = History(
-            asset_id = a.id,
-            type='fault',
-            seq=seq,
-            fault=payload.get('fault',''),
-            fault_date=parse_date(payload.get('fault_date')),
-            sent_date=parse_date(payload.get('sent_date')),
-            return_date=parse_date(payload.get('return_date') or None)
-        )
-        db.session.add(h)
-        db.session.commit()
-        return jsonify(h.to_dict()), 201
-
-    else:  # calib
-        required = ['calib_date','expire_date']
-        missing = [k for k in required if not payload.get(k)]
-        if missing:
-            return jsonify({'error':'Thiếu thông tin cho calib','missing_fields': missing}), 400
-        seq = db.session.query(func.count(History.id)).filter_by(asset_id=a.id, type='calib').scalar() or 0
-        seq = seq + 1
-        h = History(
-            asset_id = a.id,
-            type='calib',
-            seq=seq,
-            calib_date=parse_date(payload.get('calib_date')),
-            expire_date=parse_date(payload.get('expire_date'))
-        )
-        db.session.add(h)
-
-        # update asset status depending on expiry (same logic as before)
-        latest_calib_date = h.calib_date
-        # find latest calib by calib_date
-        db.session.flush()  # ensure h has id if needed
-        all_calibs = History.query.filter_by(asset_id=a.id, type='calib').all()
-        latest = None
-        latest_cd = None
-        for c in all_calibs:
-            if c.calib_date:
-                if latest is None or c.calib_date > latest_cd:
-                    latest = c
-                    latest_cd = c.calib_date
-        # consider the new one too
-        if latest is None or (h.calib_date and h.calib_date > latest_cd):
-            latest = h
-            latest_cd = h.calib_date
-
-        if latest and latest.expire_date:
-            today = date.today()
-            if today > latest.expire_date:
-                a.status = 'Calib'   # as your logic requested (you can change string)
-        db.session.commit()
-        return jsonify(h.to_dict()), 201
-
-@app.route('/export/excel', methods=['GET'])
-def export_excel():
-    assets = Asset.query.order_by(Asset.idx).all()
-    wb = Workbook()
-    ws = wb.active; ws.title = 'Assets'
-    ws.append(['STT','Số CLC','Mã tài sản','Tên máy','Hãng','Model','Mô tả','Serial','Vị trí','Trạng thái','Ngày nhập','Hạn bảo hành'])
-    for a in assets:
-        ws.append([a.idx, a.clc or '', a.code, a.name, a.brand or '', a.model or '', a.description or '', a.serial or '', a.location or '', a.status or '', a.import_date.strftime('%Y-%m-%d') if a.import_date else '', a.warranty_end.strftime('%Y-%m-%d') if a.warranty_end else ''])
-    ws2 = wb.create_sheet('History')
-    ws2.append(['Mã tài sản','Loại','Lần','Tên lỗi/ngày calib','Ngày lỗi/Ngày calib','Ngày gửi đi','Ngày nhận về','Ngày hết hạn'])
-    for a in assets:
-        for h in sorted(a.history, key=lambda x: (x.type, x.seq)):
-            if h.type == 'fault':
-                ws2.append([a.code, 'fault', h.seq, h.fault or '', h.fault_date.strftime('%Y-%m-%d') if h.fault_date else '', h.sent_date.strftime('%Y-%m-%d') if h.sent_date else '', h.return_date.strftime('%Y-%m-%d') if h.return_date else '', ''])
-            else:
-                ws2.append([a.code, 'calib', h.seq, '', h.calib_date.strftime('%Y-%m-%d') if h.calib_date else '', '', '', h.expire_date.strftime('%Y-%m-%d') if h.expire_date else ''])
-    stream = io.BytesIO(); wb.save(stream); stream.seek(0)
-    fname = f"assets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    return send_file(stream, as_attachment=True, download_name=fname, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-# ---------- Frontend (HTML) ----------
+# We'll set INDEX_HTML to the long HTML from user's message:
 INDEX_HTML = r'''
 <!doctype html>
 <html lang="vi">
@@ -501,18 +245,18 @@ async function loadTable(){
   for(const a of list){
     const tr = document.createElement('tr');
     tr.innerHTML = `\
-      <td>${a.index}</td>\
+      <td>${a.index || ''}</td>\
       <td>${a.clc || ''}</td>\
-      <td class="code-link">${a.code}</td>\
-      <td>${a.name}</td>\
-      <td>${a.brand}</td>\
+      <td class="code-link">${a.code || ''}</td>\
+      <td>${a.name || ''}</td>\
+      <td>${a.brand || ''}</td>\
       <td>${a.model || ''}</td>\
       <td>${a.description || ''}</td>\
-      <td>${a.serial}</td>\
-      <td>${a.location}</td>\
-      <td>${a.status}</td>\
-      <td>${a.import_date}</td>\
-      <td>${a.warranty_end}</td>`;
+      <td>${a.serial || ''}</td>\
+      <td>${a.location || ''}</td>\
+      <td>${a.status || ''}</td>\
+      <td>${a.import_date || ''}</td>\
+      <td>${a.warranty_end || ''}</td>`;
     tr.querySelector('.code-link').onclick = () => toggleHistory(tr, a.code);
     tbody.appendChild(tr);
   }
@@ -568,16 +312,16 @@ async function loadForEdit(){
   const res = await fetch('/api/assets/' + encodeURIComponent(code));
   if(!res.ok){ const d = await res.json(); document.getElementById('editAlert').classList.remove('d-none'); document.getElementById('editAlert').innerText = d.error || 'Không tìm thấy'; return; }
   const a = await res.json();
-  document.getElementById('edit_code').value = a.code;
+  document.getElementById('edit_code').value = a.code || '';
   document.getElementById('edit_clc').value = a.clc || '';
-  document.getElementById('edit_name').value = a.name;
-  document.getElementById('edit_brand').value = a.brand;
+  document.getElementById('edit_name').value = a.name || '';
+  document.getElementById('edit_brand').value = a.brand || '';
   document.getElementById('edit_model').value = a.model || '';
-  document.getElementById('edit_serial').value = a.serial;
-  document.getElementById('edit_location').value = a.location;
-  document.getElementById('edit_status').value = a.status;
-  document.getElementById('edit_import').value = a.import_date;
-  document.getElementById('edit_warranty').value = a.warranty_end;
+  document.getElementById('edit_serial').value = a.serial || '';
+  document.getElementById('edit_location').value = a.location || '';
+  document.getElementById('edit_status').value = a.status || '';
+  document.getElementById('edit_import').value = a.import_date || '';
+  document.getElementById('edit_warranty').value = a.warranty_end || '';
   document.getElementById('edit_description').value = a.description || '';
   document.getElementById('editForm').style.display = 'block';
 }
@@ -620,7 +364,6 @@ async function lookupAssetForHist(){
   const res = await fetch('/api/assets'); const list = await res.json();
   const found = list.find(a => (a.clc && a.clc.toLowerCase() === v.toLowerCase()) || (a.serial && a.serial.toLowerCase() === v.toLowerCase()));
   if(!found){ el.innerText = 'Không tìm thấy tài sản'; hist_target_identifier = null; return; }
-  // Use identifier (we prefer code internally) but send identifier to server
   hist_target_identifier = found.code || found.clc || found.serial;
   el.innerText = `Tìm thấy: ${found.code} — ${found.name} (Số CLC: ${found.clc || ''})`;
 }
@@ -650,19 +393,16 @@ async function doAddHistory(){
   const data = await res.json();
   if(!res.ok){ const el = document.getElementById('histAlert'); el.classList.remove('d-none'); if(data.missing_fields) el.innerText = data.error + ': ' + data.missing_fields.join(', '); else el.innerText = data.error || 'Có lỗi'; return; }
   histModal.hide(); loadTable();
-  // clear fields
   ['hist_lookup','hist_fault','hist_fault_date','hist_sent','hist_return','hist_calib_date','hist_expire_date'].forEach(id=>document.getElementById(id).value='');
   hist_target_identifier = null;
 }
 
 async function toggleHistory(row, identifier){
   let next = row.nextSibling; if(next && next.classList && next.classList.contains('history-row')){ next.remove(); return; }
-  // Use safe GET /api/assets/history?identifier=...
   const res = await fetch('/api/assets/history?identifier=' + encodeURIComponent(identifier)); const data = await res.json();
   const tr = document.createElement('tr'); tr.classList.add('history-row'); const td = document.createElement('td'); td.colSpan = 12;
   if(data.error || data.length === 0){ td.innerHTML = '<em>Chưa có lịch sử</em>'; }
   else{
-    // separate into faults and calib
     const faults = data.filter(h => h.type === 'fault');
     const calibs = data.filter(h => h.type === 'calib');
     let html = '';
@@ -695,14 +435,252 @@ document.addEventListener('DOMContentLoaded', ()=>{ loadTable(); });
 def index_page():
     return render_template_string(INDEX_HTML)
 
-####################
-# Startup: create tables if not exist
-####################
-with app.app_context():
-    db.create_all()
-    # ensure idx values exist for existing rows
-    recompute_indexes()
+# ---- API: list assets ----
+@app.route("/api/assets", methods=["GET"])
+def api_list_assets():
+    try:
+        res = supabase.table("assets").select("*").order("index_num", desc=False).execute()
+        assets = res.data or []
+        # transform for frontend (index)
+        out = [transform_asset_for_frontend(a) for a in assets]
+        return jsonify(out), 200
+    except Exception as e:
+        app.logger.error("api_list_assets error: %s", e)
+        return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    print('Run server at http://127.0.0.1:5000, DB =', DATABASE_URL)
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+# ---- API: add asset ----
+@app.route("/api/assets", methods=["POST"])
+def api_add_asset():
+    data = request.get_json() or {}
+    # minimal validation similar to your frontend (frontend will show missing_fields if backend returns such)
+    required = ['clc','code','name','brand','model','serial','location','status','import_date','warranty_end','description']
+    missing = [k for k in required if not data.get(k)]
+    if missing:
+        return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
+    try:
+        # duplicate by code
+        dup = supabase.table("assets").select("code").eq("code", data["code"]).limit(1).execute()
+        if getattr(dup, "data", None):
+            return jsonify({"error": "Mã tài sản đã tồn tại"}), 400
+        data["index_num"] = next_index()
+        ins = supabase.table("assets").insert(data).execute()
+        created = ins.data[0]
+        return jsonify(transform_asset_for_frontend(created)), 201
+    except Exception as e:
+        app.logger.error("api_add_asset error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# ---- API: get asset by code (returns asset object directly) ----
+@app.route("/api/assets/<code>", methods=["GET"])
+def api_get_asset(code):
+    try:
+        res = supabase.table("assets").select("*").eq("code", code).limit(1).execute()
+        if not getattr(res, "data", None):
+            return jsonify({"error": "Không tìm thấy mã tài sản"}), 404
+        asset = transform_asset_for_frontend(res.data[0])
+        return jsonify(asset), 200
+    except Exception as e:
+        app.logger.error("api_get_asset error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# ---- API: update asset ----
+@app.route("/api/assets/<code>", methods=["PUT"])
+def api_update_asset(code):
+    data = request.get_json() or {}
+    required = ['clc','name','brand','model','description','serial','location','status','import_date','warranty_end']
+    missing = [k for k in required if not data.get(k)]
+    if missing:
+        return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
+    try:
+        res = supabase.table("assets").update(data).eq("code", code).execute()
+        if not getattr(res, "data", None):
+            return jsonify({"error": "Không tìm thấy mã tài sản"}), 404
+        updated = transform_asset_for_frontend(res.data[0])
+        return jsonify(updated), 200
+    except Exception as e:
+        app.logger.error("api_update_asset error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# ---- API: delete asset by identifier (code/clc/serial) ----
+@app.route("/api/assets", methods=["DELETE"])
+def api_delete_asset():
+    identifier = request.args.get("identifier") or (request.get_json(silent=True) or {}).get("identifier")
+    if not identifier:
+        return jsonify({"error": "Missing identifier"}), 400
+    try:
+        asset = find_asset_by_identifier(identifier)
+        if not asset:
+            return jsonify({"error": "Asset not found"}), 404
+        code = asset.get("code")
+        # delete history and asset
+        supabase.table("asset_history").delete().eq("asset_code", code).execute()
+        supabase.table("assets").delete().eq("code", code).execute()
+        # reindex
+        remaining = supabase.table("assets").select("code").order("index_num", desc=False).execute()
+        idx = 1
+        for r in (remaining.data or []):
+            try:
+                supabase.table("assets").update({"index_num": idx}).eq("code", r["code"]).execute()
+            except Exception as e:
+                app.logger.error("reindex error for %s: %s", r.get("code"), e)
+            idx += 1
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        app.logger.error("api_delete_asset error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# ---- API: get history by code ----
+@app.route("/api/assets/<code>/history", methods=["GET"])
+def api_get_history(code):
+    try:
+        res = supabase.table("asset_history").select("*").eq("asset_code", code).order("seq", desc=False).execute()
+        return jsonify(res.data or []), 200
+    except Exception as e:
+        app.logger.error("api_get_history error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# ---- API: get history by identifier ----
+@app.route("/api/assets/history", methods=["GET"])
+def api_get_history_identifier():
+    identifier = request.args.get("identifier")
+    if not identifier:
+        return jsonify({"error": "Missing identifier"}), 400
+    try:
+        asset = find_asset_by_identifier(identifier)
+        if not asset:
+            return jsonify({"error": "Asset not found"}), 404
+        code = asset.get("code")
+        res = supabase.table("asset_history").select("*").eq("asset_code", code).order("seq", desc=False).execute()
+        return jsonify(res.data or []), 200
+    except Exception as e:
+        app.logger.error("api_get_history_identifier error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+def normalize_dates(data):
+    for field in ["fault_date", "sent_date", "return_date", "calib_date", "expire_date"]:
+        if field in data and data[field] == "":
+            data[field] = None
+    return data
+
+# ---- API: add history by identifier (body contains identifier) ----
+@app.route("/api/assets/history", methods=["POST"])
+def api_add_history_identifier():
+    body = request.get_json() or {}
+    body = normalize_dates(body)
+    identifier = body.get("identifier")
+    if not identifier:
+        return jsonify({"error": "Missing identifier"}), 400
+    if body.get("type") not in ("fault", "calib"):
+        return jsonify({"error": "Missing or invalid type (must be 'fault' or 'calib')"}), 400
+    try:
+        asset = find_asset_by_identifier(identifier)
+        if not asset:
+            return jsonify({"error": "Asset not found"}), 404
+        code = asset.get("code")
+        last = supabase.table("asset_history").select("seq").eq("asset_code", code).order("seq", desc=True).limit(1).execute()
+        seq = (last.data[0]["seq"] + 1) if getattr(last, "data", None) else 1
+        entry = dict(body)
+        entry["asset_code"] = code
+        entry["seq"] = seq
+        # validate required per type
+        if entry["type"] == "fault":
+            for k in ("fault", "fault_date", "sent_date"):
+                if not entry.get(k):
+                    return jsonify({"error": "Thiếu thông tin cho fault", "missing_fields": [k]}), 400
+        else:  # calib
+            for k in ("calib_date", "expire_date"):
+                if not entry.get(k):
+                    return jsonify({"error": "Thiếu thông tin cho calib", "missing_fields": [k]}), 400
+        ins = supabase.table("asset_history").insert(entry).execute()
+        # If calib, maybe update asset status if expired (kept from your original logic)
+        if entry["type"] == "calib":
+            try:
+                all_calibs = supabase.table("asset_history").select("*").eq("asset_code", code).eq("type", "calib").execute()
+                latest = None; latest_cd = None
+                for h in (all_calibs.data or []):
+                    cd = None
+                    try:
+                        cd = datetime.strptime(h.get("calib_date",""), "%Y-%m-%d").date()
+                    except Exception:
+                        cd = None
+                    if cd and (latest_cd is None or cd > latest_cd):
+                        latest_cd = cd; latest = h
+                if latest:
+                    exp = None
+                    try:
+                        exp = datetime.strptime(latest.get("expire_date",""), "%Y-%m-%d").date()
+                    except Exception:
+                        exp = None
+                    today = date.today()
+                    if exp and today > exp:
+                        supabase.table("assets").update({"status": "Calib"}).eq("code", code).execute()
+            except Exception as e:
+                app.logger.error("post-calib check error: %s", e)
+        return jsonify(ins.data[0]), 201
+    except Exception as e:
+        app.logger.error("api_add_history_identifier error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# ---- API: add history by code (route variant) ----
+@app.route("/api/assets/<code>/history", methods=["POST"])
+def api_add_history_code(code):
+    body = request.get_json() or {}
+    # forward to identifier handler by adding identifier = code
+    body["identifier"] = code
+    return api_add_history_identifier()
+
+# ---- EXPORT EXCEL ----
+@app.route("/export/excel", methods=["GET"])
+def export_excel():
+    try:
+        assets = supabase.table("assets").select("*").order("index_num", desc=False).execute()
+        history = supabase.table("asset_history").select("*").order("seq", desc=False).execute()
+        wb = openpyxl.Workbook()
+        ws1 = wb.active; ws1.title = "Assets"
+        if assets.data:
+            headers = ["index","clc","code","name","brand","model","description","serial","location","status","import_date","warranty_end"]
+            ws1.append(headers)
+            for a in assets.data:
+                row = [
+                    a.get("index_num"),
+                    a.get("clc",""),
+                    a.get("code",""),
+                    a.get("name",""),
+                    a.get("brand",""),
+                    a.get("model",""),
+                    a.get("description",""),
+                    a.get("serial",""),
+                    a.get("location",""),
+                    a.get("status",""),
+                    a.get("import_date",""),
+                    a.get("warranty_end","")
+                ]
+                ws1.append(row)
+        ws2 = wb.create_sheet("History")
+        ws2.append(['asset_code','type','seq','fault','fault_date','sent_date','return_date','calib_date','expire_date'])
+        for h in (history.data or []):
+            ws2.append([
+                h.get("asset_code",""),
+                h.get("type",""),
+                h.get("seq",""),
+                h.get("fault",""),
+                h.get("fault_date",""),
+                h.get("sent_date",""),
+                h.get("return_date",""),
+                h.get("calib_date",""),
+                h.get("expire_date","")
+            ])
+        fp = tempfile.gettempdir() + "/assets_export.xlsx"
+        wb.save(fp)
+        return send_file(fp, as_attachment=True, download_name="assets.xlsx")
+    except Exception as e:
+        app.logger.error("export_excel error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# -----------------------
+# Run
+# -----------------------
+if __name__ == "__main__":
+    from os import environ
+    port = int(environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
