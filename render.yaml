@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 services:
   - type: web
     name: my-flask-app
@@ -8,3 +9,15 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+=======
+services:
+  - type: web
+    name: my-flask-app
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+>>>>>>> 3e9a20d3687b77cda97b85d6186ee46115b30d4f
