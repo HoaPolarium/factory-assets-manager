@@ -257,10 +257,10 @@ INDEX_HTML = r'''
 
     <!-- Fault form -->
     <div id="hist_fault_form" style="display:block">
-      <div class="mb-2"><label class="form-label">Tên lỗi</label><input id="hist_fault" class="form-control"></div>
-      <div class="mb-2"><label class="form-label">Ngày lỗi</label><input id="hist_fault_date" class="form-control" type="date"></div>
+      <div class="mb-2"><label class="form-label">Tên lỗi*</label><input id="hist_fault" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Ngày lỗi*</label><input id="hist_fault_date" class="form-control" type="date"></div>
       <div class="mb-2"><label class="form-label">Ngày gửi đi</label><input id="hist_sent" class="form-control" type="date"></div>
-      <div class="mb-2"><label class="form-label">Ngày nhận về (tùy chọn)</label><input id="hist_return" class="form-control" type="date"></div>
+      <div class="mb-2"><label class="form-label">Ngày nhận về</label><input id="hist_return" class="form-control" type="date"></div>
     </div>
 
     <!-- Calib form -->
@@ -414,16 +414,37 @@ async function doDelete(){
 }
 
 // lookup asset by CLC or Serial for history modal
-async function lookupAssetForHist(){
+async function lookupAssetForHist() {
   const v = document.getElementById('hist_lookup').value.trim();
-  const el = document.getElementById('hist_found'); el.innerText = '';
-  if(!v){ el.innerText = 'Nhập Số CLC hoặc Serial để tìm'; return; }
-  const res = await fetch('/api/assets'); const list = await res.json();
-  const found = list.find(a => (a.clc && a.clc.toLowerCase() === v.toLowerCase()) || (a.serial && a.serial.toLowerCase() === v.toLowerCase()));
-  if(!found){ el.innerText = 'Không tìm thấy tài sản'; hist_target_identifier = null; return; }
-  hist_target_identifier = found.serial || found.clc || found.code;
-  el.innerText = `Tìm thấy: ${found.code} — ${found.name} (Số CLC: ${found.clc || ''})`;
+  const el = document.getElementById('hist_found'); 
+  el.innerText = '';
+
+  if (!v) {
+    el.innerText = 'Nhập Số CLC hoặc Serial để tìm';
+    return;
+  }
+
+  const res = await fetch('/api/assets');
+  const list = await res.json();
+
+  // Tìm theo serial hoặc CLC
+  const found = list.find(a => 
+      (a.serial && a.serial.toLowerCase() === v.toLowerCase()) ||
+      (a.clc && a.clc.toLowerCase() === v.toLowerCase())
+  );
+
+  if (!found) {
+    el.innerText = 'Không tìm thấy tài sản';
+    hist_target_identifier = null;
+    return;
+  }
+
+  // Quan trọng: chỉ lấy serial
+  hist_target_identifier = found.serial;
+
+  el.innerText = `Tìm thấy: Serial=${found.serial}, Tên=${found.name}, CLC=${found.clc || ''}`;
 }
+
 
 function onHistTypeChange(){
   const t = document.getElementById('hist_type').value;
@@ -433,54 +454,131 @@ function onHistTypeChange(){
 
 async function doAddHistory(){
   if(!hist_target_identifier){
-    const el = document.getElementById('histAlert'); el.classList.remove('d-none'); el.innerText = 'Bạn phải tìm và chọn tài sản bằng Số CLC hoặc Serial trước.'; return;
+    const el = document.getElementById('histAlert'); 
+    el.classList.remove('d-none'); 
+    el.innerText = 'Bạn phải tìm và chọn tài sản bằng Serial hoặc CLC trước.';
+    return;
   }
+
   const type = document.getElementById('hist_type').value;
-  let payload = { serial: hist_target_identifier, type };
+
+  let payload = { 
+    serial: hist_target_identifier, 
+    type 
+  };
+
   if(type === 'fault'){
     payload.fault = document.getElementById('hist_fault').value.trim();
     payload.fault_date = document.getElementById('hist_fault_date').value;
     payload.sent_date = document.getElementById('hist_sent').value;
     payload.return_date = document.getElementById('hist_return').value || '';
-  } else {
+  } 
+  else {
     payload.calib_date = document.getElementById('hist_calib_date').value;
     payload.expire_date = document.getElementById('hist_expire_date').value;
   }
-  const res = await fetch('/api/assets/history', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+
+  const res = await fetch('/api/assets/history', {
+    method:'POST', 
+    headers:{'Content-Type':'application/json'}, 
+    body: JSON.stringify(payload)
+  });
+
   const data = await res.json();
-  if(!res.ok){ const el = document.getElementById('histAlert'); el.classList.remove('d-none'); if(data.missing_fields) el.innerText = data.error + ': ' + data.missing_fields.join(', '); else el.innerText = data.error || 'Có lỗi'; return; }
-  histModal.hide(); loadTable();
-  ['hist_lookup','hist_fault','hist_fault_date','hist_sent','hist_return','hist_calib_date','hist_expire_date'].forEach(id=>document.getElementById(id).value='');
+
+  if(!res.ok){
+    const el = document.getElementById('histAlert'); 
+    el.classList.remove('d-none'); 
+    
+    if(data.missing_fields)
+      el.innerText = data.error + ': ' + data.missing_fields.join(', ');
+    else 
+      el.innerText = data.error || 'Có lỗi';
+
+    return;
+  }
+
+  histModal.hide(); 
+  loadTable();
+
+  ['hist_lookup','hist_fault','hist_fault_date','hist_sent','hist_return','hist_calib_date','hist_expire_date']
+    .forEach(id => document.getElementById(id).value='');
+
   hist_target_identifier = null;
 }
 
-async function toggleHistory(row, identifier){
-  let next = row.nextSibling; if(next && next.classList && next.classList.contains('history-row')){ next.remove(); return; }
-  const res = await fetch('/api/assets/history/' + encodeURIComponent(identifier)); const data = await res.json();
-  const tr = document.createElement('tr'); tr.classList.add('history-row'); const td = document.createElement('td'); td.colSpan = 12;
-  if(data.error || data.length === 0){ td.innerHTML = '<em>Chưa có lịch sử</em>'; }
-  else{
+
+async function toggleHistory(row, serial){
+  let next = row.nextSibling;
+
+  // Nếu đang mở → đóng lại
+  if(next && next.classList && next.classList.contains('history-row')){
+    next.remove();
+    return;
+  }
+
+  // Gọi lịch sử theo serial
+  const res = await fetch('/api/assets/history/' + encodeURIComponent(serial));
+  const data = await res.json();
+
+  const tr = document.createElement('tr');
+  tr.classList.add('history-row');
+
+  const td = document.createElement('td');
+  td.colSpan = 12;
+
+  if(data.error || data.length === 0){
+    td.innerHTML = '<em>Chưa có lịch sử</em>';
+  } 
+  else {
     const faults = data.filter(h => h.type === 'fault');
     const calibs = data.filter(h => h.type === 'calib');
+
     let html = '';
+
+    // ===== Lỗi =====
+    html += '<h6>Lịch sử lỗi</h6>';
     if(faults.length){
-      html += '<h6>Lịch sử lỗi</h6><table class="table table-sm"><thead><tr><th>STT</th><th>Tên lỗi</th><th>Ngày lỗi</th><th>Ngày gửi</th><th>Ngày nhận</th></tr></thead><tbody>';
-      for(const h of faults) html += `<tr><td>${h.seq}</td><td>${h.fault}</td><td>${h.fault_date}</td><td>${h.sent_date}</td><td>${h.return_date || ''}</td></tr>`;
+      html += `<table class="table table-sm">
+        <thead><tr><th>Seq</th><th>Tên lỗi</th><th>Ngày lỗi</th><th>Ngày gửi</th><th>Ngày nhận</th></tr></thead><tbody>`;
+      for(const h of faults){
+        html += `<tr>
+          <td>${h.seq}</td>
+          <td>${h.fault || ''}</td>
+          <td>${h.fault_date || ''}</td>
+          <td>${h.sent_date || ''}</td>
+          <td>${h.return_date || ''}</td>
+        </tr>`;
+      }
       html += '</tbody></table>';
     } else {
-      html += '<h6>Lịch sử lỗi</h6><div><em>Không có</em></div>';
+      html += '<div><em>Không có</em></div>';
     }
+
+    // ===== Calib =====
+    html += '<h6 class="mt-3">Lịch sử Calib</h6>';
     if(calibs.length){
-      html += '<h6 class="mt-2">Lịch sử Calib</h6><table class="table table-sm"><thead><tr><th>STT</th><th>Ngày calib</th><th>Ngày hết hạn</th></tr></thead><tbody>';
-      for(const h of calibs) html += `<tr><td>${h.seq}</td><td>${h.calib_date}</td><td>${h.expire_date}</td></tr>`;
+      html += `<table class="table table-sm">
+        <thead><tr><th>Seq</th><th>Ngày calib</th><th>Ngày hết hạn</th></tr></thead><tbody>`;
+      for(const h of calibs){
+        html += `<tr>
+          <td>${h.seq}</td>
+          <td>${h.calib_date || ''}</td>
+          <td>${h.expire_date || ''}</td>
+        </tr>`;
+      }
       html += '</tbody></table>';
     } else {
-      html += '<h6 class="mt-2">Lịch sử Calib</h6><div><em>Không có</em></div>';
+      html += '<div><em>Không có</em></div>';
     }
+
     td.innerHTML = html;
   }
-  tr.appendChild(td); row.parentNode.insertBefore(tr, row.nextSibling);
+
+  tr.appendChild(td);
+  row.parentNode.insertBefore(tr, row.nextSibling);
 }
+
 
 document.addEventListener('DOMContentLoaded', ()=>{ loadTable(); });
 </script>
@@ -606,45 +704,76 @@ def api_get_history_by_serial(serial):
         app.logger.error("api_get_history error: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# ---- API: add history (expects serial in body) ----
 @app.route("/api/assets/history", methods=["POST"])
-def api_add_history():
+def api_add_history_identifier():
     body = request.get_json() or {}
     body = normalize_dates(body)
+
+    # Lấy serial từ client
     serial = body.get("serial")
     if not serial:
         return jsonify({"error": "Missing serial"}), 400
-    if body.get("type") not in ("fault", "calib"):
+
+    history_type = body.get("type")
+    if history_type not in ("fault", "calib"):
         return jsonify({"error": "Missing or invalid type (must be 'fault' or 'calib')"}), 400
+
     try:
-        # determine seq
-        last = supabase.table("asset_history").select("seq").eq("serial", serial).eq("type", body["type"]).order("seq", desc=True).limit(1).execute()
-        seq = (last.data[0]["seq"] + 1) if getattr(last, "data", None) else 1
+        # kiểm tra serial có tồn tại trong bảng assets hay không
+        res = supabase.table("assets").select("*").eq("serial", serial).limit(1).execute()
+        if not res.data:
+            return jsonify({"error": "Asset not found"}), 404
+
+        # Lấy seq theo serial
+        last = (
+            supabase.table("asset_history")
+            .select("seq")
+            .eq("serial", serial)
+            .order("seq", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        seq = (last.data[0]["seq"] + 1) if last.data else 1
+
+        # Tạo bản ghi mới
         entry = {
             "serial": serial,
-            "type": body["type"],
+            "type": history_type,
             "seq": seq,
-            "fault": body.get("fault"),
-            "fault_date": body.get("fault_date"),
-            "sent_date": body.get("sent_date"),
-            "return_date": body.get("return_date"),
-            "calib_date": body.get("calib_date"),
-            "expire_date": body.get("expire_date"),
         }
-        # validate required per type
-        if entry["type"] == "fault":
-            for k in ("fault", "fault_date", "sent_date"):
-                if not entry.get(k):
-                    return jsonify({"error": "Thiếu thông tin cho fault", "missing_fields": [k]}), 400
-        else:
-            for k in ("calib_date", "expire_date"):
-                if not entry.get(k):
-                    return jsonify({"error": "Thiếu thông tin cho calib", "missing_fields": [k]}), 400
+
+        # Thêm các field tùy theo từng loại
+        if history_type == "fault":
+            entry["fault"] = body.get("fault")
+            entry["fault_date"] = body.get("fault_date")
+            entry["sent_date"] = body.get("sent_date")
+            entry["return_date"] = body.get("return_date")
+
+            # validate
+            missing = [k for k in ("fault", "fault_date") if not entry.get(k)]
+            if missing:
+                return jsonify({"error": "Thiếu thông tin cho fault", "missing_fields": missing}), 400
+
+        else:  # calib
+            entry["calib_date"] = body.get("calib_date")
+            entry["expire_date"] = body.get("expire_date")
+
+            # validate
+            missing = [k for k in ("calib_date", "expire_date") if not entry.get(k)]
+            if missing:
+                return jsonify({"error": "Thiếu thông tin cho calib", "missing_fields": missing}), 400
+
+        # Insert history
         ins = supabase.table("asset_history").insert(entry).execute()
+
         return jsonify(ins.data[0]), 201
+
     except Exception as e:
-        app.logger.error("api_add_history error: %s", e)
+        app.logger.error("api_add_history_identifier error: %s", e)
         return jsonify({"error": str(e)}), 500
+
+
 
 # ---- EXPORT EXCEL ----
 @app.route("/export/excel", methods=["GET"])
