@@ -823,6 +823,10 @@ def export_excel():
         app.logger.error("export_excel error: %s", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/health")
+def health():
+    return "OK", 200
+    
 # -----------------------
 # Run
 # -----------------------
