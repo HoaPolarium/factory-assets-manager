@@ -196,7 +196,7 @@ INDEX_HTML = r'''
         <option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option>
       </select>
     </div>
-    <div class="mb-2"><label class="form-label">Ngày nhập *</label><input id="add_import" class="form-control" type="date"></div>
+    <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="add_import" class="form-control" type="date"></div>
     <div class="mb-2"><label class="form-label">Hạn bảo hành</label><input id="add_warranty" class="form-control" type="date"></div>
   </div>
   <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button><button class="btn btn-primary" onclick="doAdd()">Lưu</button></div>
@@ -609,7 +609,7 @@ def api_list_assets():
 def api_add_asset():
     data = request.get_json() or {}
     # required fields changed per your request
-    required = ['name','brand','model','serial','location','status','import_date']
+    required = ['name','brand','model','serial','location','status']
     missing = [k for k in required if not data.get(k)]
     if missing:
         return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
