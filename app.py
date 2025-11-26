@@ -388,6 +388,7 @@ async function doEdit(){
 
   const payload = {
     clc: document.getElementById('edit_clc').value.trim(),
+    code: document.getElementById('edit_code').value.trim(),
     name: document.getElementById('edit_name').value.trim(),
     brand: document.getElementById('edit_brand').value.trim(),
     model: document.getElementById('edit_model').value.trim(),
@@ -679,21 +680,24 @@ def api_update_asset(serial):
         body = request.get_json() or {}
         body = normalize_dates(body)
 
-        # Tìm tài sản theo SERIAL
-        asset = (
+        # ---- Tìm tài sản theo serial ----
+        existing = (
             supabase.table("assets")
             .select("*")
             .eq("serial", serial)
             .single()
             .execute()
         )
-
-        if not getattr(asset, "data", None):
+        if not getattr(existing, "data", None):
             return jsonify({"error": "Asset not found with this serial"}), 404
 
-        # Chỉ cập nhật các trường hợp lệ
+        old_asset = existing.data
+
+        # ==================================================
+        # Cho phép update *bao gồm cả code* (mã tài sản)
+        # ==================================================
         ALLOWED_FIELDS = {
-            "clc", "name", "brand", "model", "serial",
+            "clc", "code", "name", "brand", "model", "serial",
             "location", "status", "import_date",
             "warranty_end", "description"
         }
@@ -703,7 +707,26 @@ def api_update_asset(serial):
         if not update_data:
             return jsonify({"error": "No valid fields to update"}), 400
 
-        # UPDATE theo serial
+        # ==================================================
+        # Nếu user đổi "code" → kiểm tra không bị trùng
+        # ==================================================
+        if "code" in update_data:
+            new_code = update_data["code"].strip()
+
+            if new_code != old_asset["code"]:
+                dup_check = (
+                    supabase.table("assets")
+                    .select("code")
+                    .eq("code", new_code)
+                    .execute()
+                )
+
+                if getattr(dup_check, "data", None):
+                    return jsonify({"error": "Mã tài sản đã tồn tại"}), 400
+
+        # ==================================================
+        # Tiến hành UPDATE theo serial
+        # ==================================================
         res = (
             supabase.table("assets")
             .update(update_data)
@@ -711,6 +734,7 @@ def api_update_asset(serial):
             .execute()
         )
 
+        # cập nhật lại STT
         ensure_index_consistency()
 
         return jsonify(res.data[0]), 200
@@ -718,6 +742,7 @@ def api_update_asset(serial):
     except Exception as e:
         app.logger.error("api_update_asset error: %s", e)
         return jsonify({"error": str(e)}), 500
+
 
 
 # ---- API: delete asset only by serial (NO history deletion) ----
