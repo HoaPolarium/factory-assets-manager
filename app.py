@@ -207,15 +207,15 @@ INDEX_HTML = r'''
   <div class="modal-header"><h5 class="modal-title">Sửa thông tin tài sản</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
     <div id="editAlert" class="alert alert-danger d-none"></div>
-    <div class="mb-2 d-flex"><input id="edit_lookup_code" class="form-control me-2" placeholder="Nhập mã tài sản để load"><button class="btn btn-outline-primary" onclick="loadForEdit()">Tải</button></div>
+    <div class="mb-2 d-flex"><input id="edit_lookup_code" class="form-control me-2" placeholder="Nhập mã serial để load"><button class="btn btn-outline-primary" onclick="loadForEdit()">Tải</button></div>
     <div id="editForm" style="display:none">
-      <div class="mb-2"><label class="form-label">Mã tài sản (không sửa)</label><input id="edit_code" class="form-control" disabled></div>
+      <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="edit_code" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Số CLC</label><input id="edit_clc" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Tên máy</label><input id="edit_name" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Hãng</label><input id="edit_brand" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Model</label><input id="edit_model" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Mô tả</label><input id="edit_description" class="form-control" type="text"></div>
-      <div class="mb-2"><label class="form-label">Serial</label><input id="edit_serial" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Serial</label><input id="edit_serial" class="form-control" disabled></div>
       <div class="mb-2"><label class="form-label">Vị trí</label><input id="edit_location" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Trạng thái</label><select id="edit_status" class="form-select"><option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option></select></div>
       <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="edit_import" class="form-control" type="date"></div>
@@ -634,12 +634,12 @@ def api_add_asset():
         return jsonify({"error": str(e)}), 500
 
 # ---- API: get asset by code (unchanged) ----
-@app.route("/api/assets/<code>", methods=["GET"])
-def api_get_asset(code):
+@app.route("/api/assets/<serial>", methods=["GET"])
+def api_get_asset(serial):
     try:
-        res = supabase.table("assets").select("*").eq("code", code).limit(1).execute()
+        res = supabase.table("assets").select("*").eq("serial", serial).limit(1).execute()
         if not getattr(res, "data", None):
-            return jsonify({"error": "Không tìm thấy mã tài sản"}), 404
+            return jsonify({"error": "Không tìm thấy mã serial"}), 404
         asset = transform_asset_for_frontend(res.data[0])
         return jsonify(asset), 200
     except Exception as e:
