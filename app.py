@@ -378,24 +378,48 @@ async function loadForEdit(){
 }
 
 async function doEdit(){
-  const code = document.getElementById('edit_code').value;
+  const serial = document.getElementById('edit_serial').value.trim();   // dùng SERIAL làm identifier
+
+  if(!serial){
+    document.getElementById('editAlert').classList.remove('d-none');
+    document.getElementById('editAlert').innerText = "Thiếu serial — không thể cập nhật";
+    return;
+  }
+
   const payload = {
     clc: document.getElementById('edit_clc').value.trim(),
     name: document.getElementById('edit_name').value.trim(),
     brand: document.getElementById('edit_brand').value.trim(),
     model: document.getElementById('edit_model').value.trim(),
-    serial: document.getElementById('edit_serial').value.trim(),
+    serial: serial,
     location: document.getElementById('edit_location').value.trim(),
     status: document.getElementById('edit_status').value,
     import_date: document.getElementById('edit_import').value,
     warranty_end: document.getElementById('edit_warranty').value,
     description: document.getElementById('edit_description').value.trim()
   };
-  const res = await fetch('/api/assets/serial/' + encodeURIComponent(code), {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+
+  const res = await fetch('/api/assets/' + encodeURIComponent(serial), {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+
   const data = await res.json();
-  if(!res.ok){ if(data.missing_fields) { document.getElementById('editAlert').classList.remove('d-none'); document.getElementById('editAlert').innerText = data.error + ': ' + data.missing_fields.join(', '); } else { document.getElementById('editAlert').classList.remove('d-none'); document.getElementById('editAlert').innerText = data.error || 'Có lỗi'; } return; }
-  editModal.hide(); loadTable(); document.getElementById('editForm').style.display='none'; document.getElementById('edit_lookup_code').value='';
+
+  if(!res.ok){
+    const alert = document.getElementById('editAlert');
+    alert.classList.remove('d-none');
+    alert.innerText = data.error || "Có lỗi khi cập nhật";
+    return;
+  }
+
+  // Thành công
+  editModal.hide();
+  loadTable();
+  document.getElementById('editForm').style.display = 'none';
 }
+
 
 async function doDelete(){
   const serial = document.getElementById('del_code').value.trim();
@@ -646,24 +670,55 @@ def api_get_asset(serial):
         app.logger.error("api_get_asset error: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# ---- API: update asset by serial ----
-@app.route("/api/assets/serial/<serial>", methods=["PUT"])
+# ===========================
+# API UPDATE ASSET BY SERIAL
+# ===========================
+@app.route("/api/assets/<serial>", methods=["PUT", "PATCH"])
 def api_update_asset(serial):
-    data = request.get_json() or {}
-    required = ['name','brand','model','serial','location','status','import_date']
-    missing = [k for k in required if not data.get(k)]
-    if missing:
-        return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
     try:
-        data = normalize_dates(data)
-        res = supabase.table("assets").update(data).eq("serial", serial).execute()
-        if not getattr(res, "data", None):
-            return jsonify({"error": "Không tìm thấy serial"}), 404
-        updated = transform_asset_for_frontend(res.data[0])
-        return jsonify(updated), 200
+        body = request.get_json() or {}
+        body = normalize_dates(body)
+
+        # Tìm tài sản theo SERIAL
+        asset = (
+            supabase.table("assets")
+            .select("*")
+            .eq("serial", serial)
+            .single()
+            .execute()
+        )
+
+        if not getattr(asset, "data", None):
+            return jsonify({"error": "Asset not found with this serial"}), 404
+
+        # Chỉ cập nhật các trường hợp lệ
+        ALLOWED_FIELDS = {
+            "clc", "name", "brand", "model", "serial",
+            "location", "status", "import_date",
+            "warranty_end", "description"
+        }
+
+        update_data = {k: v for k, v in body.items() if k in ALLOWED_FIELDS}
+
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        # UPDATE theo serial
+        res = (
+            supabase.table("assets")
+            .update(update_data)
+            .eq("serial", serial)
+            .execute()
+        )
+
+        ensure_index_consistency()
+
+        return jsonify(res.data[0]), 200
+
     except Exception as e:
         app.logger.error("api_update_asset error: %s", e)
         return jsonify({"error": str(e)}), 500
+
 
 # ---- API: delete asset only by serial (NO history deletion) ----
 @app.route("/api/assets", methods=["DELETE"])
