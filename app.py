@@ -27,89 +27,19 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # -----------------------
 # Helpers
 # -----------------------
-def next_index():
-    """Return next index (index_num) = max(index_num) + 1 or 1."""
-    try:
-        res = supabase.table("assets").select("index_num").order("index_num", desc=True).limit(1).execute()
-        if getattr(res, "data", None) and len(res.data) > 0 and res.data[0].get("index_num"):
-            return res.data[0]["index_num"] + 1
-        return 1
-    except Exception as e:
-        app.logger.error("next_index error: %s", e)
-        return 1
-
-def ensure_index_consistency():
-    """
-    Ensure that every row in assets has a non-null index_num,
-    and that index_num values are sequential starting from 1.
-    This function will update DB if inconsistencies are found.
-    """
-    try:
-        res = supabase.table("assets").select("code,index_num").order("index_num", desc=False).execute()
-        rows = res.data or []
-        need_update = False
-
-        # If any index_num is None or zero or duplicates, we reindex.
-        if not rows:
-            return
-
-        for r in rows:
-            if r.get("index_num") is None:
-                need_update = True
-                break
-
-        # Additional check: ensure strictly increasing by 1
-        if not need_update:
-            expected = 1
-            for r in rows:
-                if r.get("index_num") != expected:
-                    need_update = True
-                    break
-                expected += 1
-
-        if need_update:
-            # assign fresh sequential indices based on order by id (or existing order)
-            # We'll fetch ordered by id to re-stable ordering
-            res2 = supabase.table("assets").select("code").order("id", desc=False).execute()
-            rem = res2.data or []
-            idx = 1
-            for r in rem:
-                try:
-                    supabase.table("assets").update({"index_num": idx}).eq("code", r["code"]).execute()
-                except Exception as e:
-                    app.logger.error("ensure_index_consistency update error for %s: %s", r.get("code"), e)
-                idx += 1
-    except Exception as e:
-        app.logger.error("ensure_index_consistency error: %s", e)
-
-def find_asset_by_identifier(identifier):
-    """Find asset by code or clc or serial (exact match). Return asset dict or None."""
-    if not identifier:
-        return None
-    identifier = identifier.strip()
-    try:
-        # using or_ to match code/clc/serial
-        q = f"code.eq.{identifier},clc.eq.{identifier},serial.eq.{identifier}"
-        res = supabase.table("assets").select("*").or_(q).limit(1).execute()
-        if getattr(res, "data", None):
-            return res.data[0]
-    except Exception as e:
-        app.logger.error("find_asset error: %s", e)
-    return None
 
 def transform_asset_for_frontend(a):
-    """Map DB asset to frontend shape (frontend expects 'index' property)."""
+    """Map DB asset to frontend shape. index is added in api_list_assets."""
     if not a:
         return a
-    out = dict(a)  # shallow copy
-    if "index_num" in out:
-        out["index"] = out.get("index_num")
-    else:
-        out["index"] = out.get("index", None)
-    return out
+    return dict(a)
 
 def normalize_dates(data):
-    for field in ["fault_date", "sent_date", "return_date", "calib_date", "expire_date", "import_date", "warranty_end"]:
+    for field in [
+        "fault_date", "sent_date", "return_date",
+        "calib_date", "expire_date",
+        "import_date", "warranty_end"
+    ]:
         if field in data and data[field] == "":
             data[field] = None
     return data
@@ -285,6 +215,7 @@ const delModal = new bootstrap.Modal(document.getElementById('modalDelete'));
 const histModal = new bootstrap.Modal(document.getElementById('modalHist'));
 
 let hist_target_identifier = null; // will store the identifier (could be clc, code, or serial)
+let assetCache = [];
 
 function openAdd(){ document.getElementById('addAlert').classList.add('d-none'); addModal.show(); }
 function openEdit(){ document.getElementById('editAlert').classList.add('d-none'); editModal.show(); }
@@ -292,45 +223,70 @@ function openDelete(){ delModal.show(); }
 function openHist(){ document.getElementById('histAlert').classList.add('d-none'); document.getElementById('hist_found').innerText=''; hist_target_identifier = null; histModal.show(); }
 
 async function loadTable(){
-  const res = await fetch('/api/assets');
-  const list = await res.json();
+  const res = await fetch("/api/assets");
+  assetCache = await res.json();
+  renderTable(assetCache);
+  updateTotalAssets();
+}
 
-  document.getElementById('totalAssets').innerText =
-        'Tổng số tài sản: ' + list.length;
+function updateTotalAssets(){
+  const total = assetCache.length;
+  document.getElementById("totalAssets").innerText =
+      "Tổng số tài sản: " + total;
+}
 
-  const tbody = document.getElementById('tbody');
-  tbody.innerHTML = '';
-
+function renderTable(list){
+  const tbody = document.querySelector("#assetTable tbody");
+  tbody.innerHTML = "";
   for(const a of list){
-      const tr = document.createElement('tr');
-      const today = new Date();
-      let statusWarranty = "Hết hạn";
-
-      if (a.warranty_end) {
-          const d = new Date(a.warranty_end);
-          if (d >= today) statusWarranty = "Còn hạn";
-      } else {
-          statusWarranty = "Hết hạn";
-      }
-
-      tr.innerHTML = `
-        <td>${a.clc || ''}</td>
-        <td>${a.code || ''}</td>
-        <td>${a.name || ''}</td>
-        <td>${a.brand || ''}</td>
-        <td>${a.model || ''}</td>
-        <td>${a.description || ''}</td>
-        <td class="serial-link">${a.serial || ''}</td>
-        <td>${a.location || ''}</td>
-        <td>${a.status || ''}</td>
-        <td>${a.import_date || ''}</td>
-        <td>${a.warranty_end || ''}</td>
-        <td>${statusWarranty}</td>   <!-- NEW -->
-      `;
-      tbody.appendChild(tr);
-      tr.querySelector('.serial-link').onclick = () => toggleHistory(tr, a.serial);
+    tbody.appendChild(renderRow(a));
   }
-  applyFilters();
+}
+
+function renderRow(a){
+  const tr = document.createElement("tr");
+  tr.dataset.serial = a.serial;
+
+  // Tính hiệu lực bảo hành
+  const today = new Date();
+  let statusWarranty = "Hết hạn";
+  if (a.warranty_end){
+    const d = new Date(a.warranty_end);
+    if (d >= today) statusWarranty = "Còn hạn";
+  }
+
+  tr.innerHTML = `
+    <td>${a.clc || ""}</td>
+    <td>${a.code || ""}</td>
+    <td>${a.name || ""}</td>
+    <td>${a.brand || ""}</td>
+    <td>${a.model || ""}</td>
+    <td>${a.description || ""}</td>
+    <td class="serial-link" style="cursor:pointer"
+        onclick="toggleHistory(this.parentNode, '${a.serial}')">
+        ${a.serial}
+    </td>
+    <td>${a.location || ""}</td>
+    <td>${a.status || ""}</td>
+    <td>${a.import_date || ""}</td>
+    <td>${a.warranty_end || ""}</td>
+    <td style="font-weight:600; color:${statusWarranty === "Còn hạn" ? "green" : "red"}">${statusWarranty}</td>
+  `;
+
+  return tr;
+}
+
+function updateRowBySerial(serial, updated){
+  const tr = document.querySelector(`#assetTable tr[data-serial="${serial}"]`);
+  if (tr){
+    const newRow = renderRow(updated);
+    tr.innerHTML = newRow.innerHTML;
+  }
+}
+
+function appendRow(a){
+  const tbody = document.querySelector("#assetTable tbody");
+  tbody.appendChild(renderRow(a));
 }
 
 
@@ -373,7 +329,10 @@ async function doAdd(){
     if(data.missing_fields) el.innerText = data.error + ': ' + data.missing_fields.join(', '); else el.innerText = data.error || 'Có lỗi';
     return;
   }
-  addModal.hide(); loadTable();
+  appendRow(data);     // thêm dòng mới
+  assetCache.push(data);  // cập nhật cache
+  updateTotalAssets();
+  addModal.hide();
   ['add_clc','add_code','add_name','add_brand','add_model','add_serial','add_location','add_import','add_warranty','add_description'].forEach(id=>document.getElementById(id).value='');
 }
 
@@ -397,10 +356,10 @@ async function loadForEdit(){
   document.getElementById('editForm').style.display = 'block';
 }
 
-async function doEdit(){
-  const serial = document.getElementById('edit_serial').value.trim();   // dùng SERIAL làm identifier
+async function doEdit() {
+  const serial = document.getElementById('edit_serial').value.trim();   
 
-  if(!serial){
+  if (!serial) {
     document.getElementById('editAlert').classList.remove('d-none');
     document.getElementById('editAlert').innerText = "Thiếu serial — không thể cập nhật";
     return;
@@ -428,18 +387,24 @@ async function doEdit(){
 
   const data = await res.json();
 
-  if(!res.ok){
+  if (!res.ok) {
     const alert = document.getElementById('editAlert');
     alert.classList.remove('d-none');
     alert.innerText = data.error || "Có lỗi khi cập nhật";
     return;
   }
 
-  // Thành công
+  // Cập nhật UI ngay lập tức
+  updateRowBySerial(serial, data);
+
+  // Cập nhật lại cache
+  const idx = assetCache.findIndex(a => a.serial === serial);
+  if (idx !== -1) assetCache[idx] = data;
+
   editModal.hide();
-  loadTable();
   document.getElementById('editForm').style.display = 'none';
 }
+
 
 
 async function doDelete(){
@@ -488,6 +453,7 @@ async function lookupAssetForHist() {
   hist_target_identifier = found.serial;
 
   el.innerText = `Tìm thấy: Serial=${found.serial}, Tên=${found.name}, CLC=${found.clc || ''}`;
+  updateTotalAssets();
 }
 
 
@@ -639,11 +605,16 @@ def index_page():
 @app.route("/api/assets", methods=["GET"])
 def api_list_assets():
     try:
-        # ensure index_num is present and consistent
-        ensure_index_consistency()
-        res = supabase.table("assets").select("*").order("index_num", desc=False).execute()
+        res = supabase.table("assets").select("*").order("id", desc=False).execute()
         assets = res.data or []
-        out = [transform_asset_for_frontend(a) for a in assets]
+
+        # Tạo STT (index) động — không lưu trong DB
+        out = []
+        for i, a in enumerate(assets, start=1):
+            item = transform_asset_for_frontend(a)
+            item["index"] = i
+            out.append(item)
+
         return jsonify(out), 200
     except Exception as e:
         app.logger.error("api_list_assets error: %s", e)
@@ -653,37 +624,40 @@ def api_list_assets():
 @app.route("/api/assets", methods=["POST"])
 def api_add_asset():
     data = request.get_json() or {}
-    # required fields changed per your request
-    required = ['name','brand','model','serial','location','status']
+
+    required = ['name', 'brand', 'model', 'serial', 'location', 'status']
     missing = [k for k in required if not data.get(k)]
     if missing:
         return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
+
     try:
-        # duplicate by code (if provided) or by serial
         if data.get("code"):
             dup = supabase.table("assets").select("code").eq("code", data["code"]).limit(1).execute()
-            if getattr(dup, "data", None):
+            if dup.data:
                 return jsonify({"error": "Mã tài sản đã tồn tại"}), 400
+
         if data.get("serial"):
             dup2 = supabase.table("assets").select("serial").eq("serial", data["serial"]).limit(1).execute()
-            if getattr(dup2, "data", None):
+            if dup2.data:
                 return jsonify({"error": "Serial đã tồn tại"}), 400
 
         data = normalize_dates(data)
-        data["index_num"] = next_index()
+
         ins = supabase.table("assets").insert(data).execute()
         created = ins.data[0]
+
         return jsonify(transform_asset_for_frontend(created)), 201
+
     except Exception as e:
         app.logger.error("api_add_asset error: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# ---- API: get asset by code (unchanged) ----
+# ---- API: get asset by serial ----
 @app.route("/api/assets/<serial>", methods=["GET"])
 def api_get_asset(serial):
     try:
         res = supabase.table("assets").select("*").eq("serial", serial).limit(1).execute()
-        if not getattr(res, "data", None):
+        if not res.data:
             return jsonify({"error": "Không tìm thấy mã serial"}), 404
         asset = transform_asset_for_frontend(res.data[0])
         return jsonify(asset), 200
@@ -691,71 +665,42 @@ def api_get_asset(serial):
         app.logger.error("api_get_asset error: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# ===========================
-# API UPDATE ASSET BY SERIAL
-# ===========================
+# ---- API UPDATE ASSET ----
 @app.route("/api/assets/<serial>", methods=["PUT", "PATCH"])
 def api_update_asset(serial):
     try:
         body = request.get_json() or {}
         body = normalize_dates(body)
 
-        # ---- Tìm tài sản theo serial ----
-        existing = (
-            supabase.table("assets")
-            .select("*")
-            .eq("serial", serial)
-            .single()
-            .execute()
-        )
-        if not getattr(existing, "data", None):
-            return jsonify({"error": "Asset not found with this serial"}), 404
+        existing = supabase.table("assets").select("*").eq("serial", serial).single().execute()
+        if not existing.data:
+            return jsonify({"error": "Asset not found"}), 404
 
         old_asset = existing.data
 
-        # ==================================================
-        # Cho phép update *bao gồm cả code* (mã tài sản)
-        # ==================================================
-        ALLOWED_FIELDS = {
+        allowed_fields = {
             "clc", "code", "name", "brand", "model", "serial",
-            "location", "status", "import_date",
-            "warranty_end", "description"
+            "location", "status", "import_date", "warranty_end", "description"
         }
 
-        update_data = {k: v for k, v in body.items() if k in ALLOWED_FIELDS}
+        update_data = {k: v for k, v in body.items() if k in allowed_fields}
 
         if not update_data:
             return jsonify({"error": "No valid fields to update"}), 400
 
-        # ==================================================
-        # Nếu user đổi "code" → kiểm tra không bị trùng
-        # ==================================================
         if "code" in update_data:
             new_code = update_data["code"].strip()
-
-            if new_code != old_asset["code"]:
-                dup_check = (
-                    supabase.table("assets")
-                    .select("code")
-                    .eq("code", new_code)
-                    .execute()
-                )
-
-                if getattr(dup_check, "data", None):
+            if new_code != (old_asset.get("code") or ""):
+                dup_check = supabase.table("assets").select("code").eq("code", new_code).execute()
+                if dup_check.data:
                     return jsonify({"error": "Mã tài sản đã tồn tại"}), 400
 
-        # ==================================================
-        # Tiến hành UPDATE theo serial
-        # ==================================================
         res = (
             supabase.table("assets")
             .update(update_data)
             .eq("serial", serial)
             .execute()
         )
-
-        # cập nhật lại STT
-        ensure_index_consistency()
 
         return jsonify(res.data[0]), 200
 
@@ -764,8 +709,7 @@ def api_update_asset(serial):
         return jsonify({"error": str(e)}), 500
 
 
-
-# ---- API: delete asset only by serial (NO history deletion) ----
+# ---- API DELETE ----
 @app.route("/api/assets", methods=["DELETE"])
 def api_delete_asset_by_serial():
     serial = request.args.get("serial") or (request.get_json(silent=True) or {}).get("serial")
@@ -774,27 +718,19 @@ def api_delete_asset_by_serial():
         return jsonify({"error": "Missing serial"}), 400
 
     try:
-        # Tìm asset theo serial
         res = supabase.table("assets").select("*").eq("serial", serial).limit(1).execute()
-        rows = res.data or []
-
-        if not rows:
+        if not res.data:
             return jsonify({"error": "Asset not found"}), 404
 
-        # Xóa asset theo serial
         supabase.table("assets").delete().eq("serial", serial).execute()
 
-        # Reindex STT sau xóa
-        ensure_index_consistency()
-
         return jsonify({"ok": True}), 200
-
     except Exception as e:
         app.logger.error("api_delete_asset_by_serial error: %s", e)
         return jsonify({"error": str(e)}), 500
 
 
-# ---- API: get history by serial ----
+# ---- API: get history ----
 @app.route("/api/assets/history/<serial>", methods=["GET"])
 def api_get_history_by_serial(serial):
     try:
@@ -804,27 +740,25 @@ def api_get_history_by_serial(serial):
         app.logger.error("api_get_history error: %s", e)
         return jsonify({"error": str(e)}), 500
 
+# ---- API add history ----
 @app.route("/api/assets/history", methods=["POST"])
-def api_add_history_identifier():
+def api_add_history():
     body = request.get_json() or {}
     body = normalize_dates(body)
 
-    # Lấy serial từ client
     serial = body.get("serial")
     if not serial:
         return jsonify({"error": "Missing serial"}), 400
 
     history_type = body.get("type")
     if history_type not in ("fault", "calib"):
-        return jsonify({"error": "Missing or invalid type (must be 'fault' or 'calib')"}), 400
+        return jsonify({"error": "Missing or invalid type"}), 400
 
     try:
-        # kiểm tra serial có tồn tại trong bảng assets hay không
-        res = supabase.table("assets").select("*").eq("serial", serial).limit(1).execute()
+        res = supabase.table("assets").select("serial").eq("serial", serial).limit(1).execute()
         if not res.data:
             return jsonify({"error": "Asset not found"}), 404
 
-        # Lấy seq theo serial
         last = (
             supabase.table("asset_history")
             .select("seq")
@@ -833,106 +767,126 @@ def api_add_history_identifier():
             .limit(1)
             .execute()
         )
-
         seq = (last.data[0]["seq"] + 1) if last.data else 1
 
-        # Tạo bản ghi mới
         entry = {
             "serial": serial,
             "type": history_type,
-            "seq": seq,
+            "seq": seq
         }
 
-        # Thêm các field tùy theo từng loại
         if history_type == "fault":
             entry["fault"] = body.get("fault")
             entry["fault_date"] = body.get("fault_date")
             entry["sent_date"] = body.get("sent_date")
             entry["return_date"] = body.get("return_date")
 
-            # validate
             missing = [k for k in ("fault", "fault_date") if not entry.get(k)]
             if missing:
-                return jsonify({"error": "Thiếu thông tin cho fault", "missing_fields": missing}), 400
+                return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
 
-        else:  # calib
+        else:
             entry["calib_date"] = body.get("calib_date")
             entry["expire_date"] = body.get("expire_date")
 
-            # validate
             missing = [k for k in ("calib_date", "expire_date") if not entry.get(k)]
             if missing:
-                return jsonify({"error": "Thiếu thông tin cho calib", "missing_fields": missing}), 400
+                return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
 
-        # Insert history
         ins = supabase.table("asset_history").insert(entry).execute()
 
         return jsonify(ins.data[0]), 201
 
     except Exception as e:
-        app.logger.error("api_add_history_identifier error: %s", e)
+        app.logger.error("api_add_history error: %s", e)
         return jsonify({"error": str(e)}), 500
-
 
 
 # ---- EXPORT EXCEL ----
 @app.route("/export/excel", methods=["GET"])
 def export_excel():
     try:
-        assets = supabase.table("assets").select("*").order("index_num", desc=False).execute()
+        assets = supabase.table("assets").select("*").order("id", desc=False).execute()
         history = supabase.table("asset_history").select("*").order("seq", desc=False).execute()
+
         wb = openpyxl.Workbook()
-        ws1 = wb.active; ws1.title = "Assets"
-        if assets.data:
-            headers = ["index","clc","code","name","brand","model","description","serial","location","status","import_date","warranty_end"]
-            ws1.append(headers)
-            for a in assets.data:
-                row = [
-                    a.get("index_num"),
-                    a.get("clc",""),
-                    a.get("code",""),
-                    a.get("name",""),
-                    a.get("brand",""),
-                    a.get("model",""),
-                    a.get("description",""),
-                    a.get("serial",""),
-                    a.get("location",""),
-                    a.get("status",""),
-                    a.get("import_date",""),
-                    a.get("warranty_end","")
-                ]
-                ws1.append(row)
+        ws1 = wb.active
+        ws1.title = "Assets"
+
+        # ==== Header GIỐNG GIAO DIỆN ====
+        headers = [
+            "STT", "Số CLC", "Mã tài sản", "Tên máy", "Hãng", "Model",
+            "Mô tả", "Serial", "Vị trí", "Trạng thái",
+            "Ngày nhập", "Hạn bảo hành", "Hiệu lực bảo hành"
+        ]
+        ws1.append(headers)
+
+        from datetime import datetime
+
+        # ==== Ghi từng dòng ====
+        for i, a in enumerate(assets.data or [], start=1):
+
+            # Tính hiệu lực bảo hành
+            statusWarranty = "Hết hạn"
+            if a.get("warranty_end"):
+                try:
+                    d = datetime.strptime(a["warranty_end"], "%Y-%m-%d").date()
+                    if d >= date.today():
+                        statusWarranty = "Còn hạn"
+                except:
+                    pass
+
+            ws1.append([
+                i,
+                a.get("clc", ""),
+                a.get("code", ""),
+                a.get("name", ""),
+                a.get("brand", ""),
+                a.get("model", ""),
+                a.get("description", ""),
+                a.get("serial", ""),
+                a.get("location", ""),
+                a.get("status", ""),
+                a.get("import_date", ""),
+                a.get("warranty_end", ""),
+                statusWarranty
+            ])
+
+        # ==== Sheet lịch sử =====
         ws2 = wb.create_sheet("History")
-        ws2.append(['serial','type','seq','fault','fault_date','sent_date','return_date','calib_date','expire_date'])
+        ws2.append([
+            'serial', 'type', 'seq',
+            'fault', 'fault_date', 'sent_date', 'return_date',
+            'calib_date', 'expire_date'
+        ])
+
         for h in (history.data or []):
             ws2.append([
-                h.get("serial",""),
-                h.get("type",""),
-                h.get("seq",""),
-                h.get("fault",""),
-                h.get("fault_date",""),
-                h.get("sent_date",""),
-                h.get("return_date",""),
-                h.get("calib_date",""),
-                h.get("expire_date","")
+                h.get("serial", ""),
+                h.get("type", ""),
+                h.get("seq", ""),
+                h.get("fault", ""),
+                h.get("fault_date", ""),
+                h.get("sent_date", ""),
+                h.get("return_date", ""),
+                h.get("calib_date", ""),
+                h.get("expire_date", "")
             ])
+
         fp = tempfile.gettempdir() + "/assets_export.xlsx"
         wb.save(fp)
         return send_file(fp, as_attachment=True, download_name="assets.xlsx")
+
     except Exception as e:
         app.logger.error("export_excel error: %s", e)
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/health")
 def health():
     return "OK", 200
-    
-# -----------------------
-# Run
-# -----------------------
+
 if __name__ == "__main__":
-    from os import environ
-    port = int(environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5000))
     print(f"Run server at http://127.0.0.1:{port}")
     app.run(host="0.0.0.0", port=port)
-
