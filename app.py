@@ -138,8 +138,11 @@ INDEX_HTML = r'''
 </head>
 <body>
 <div class="container">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">Quản lý tài sản</h3>
+  <div class="d-flex justify-content-between align-items-center mb-3">   
+    <div>
+      <h3 class="mb-0">Quản lý tài sản</h3>
+      <div id="totalAssets" class="text-muted mt-1" style="font-size:14px"></div>
+    </div>
     <div>
       <button class="btn btn-success me-1" onclick="openAdd()">Thêm sản phẩm</button>
       <button class="btn btn-secondary me-1" onclick="openEdit()">Sửa thông tin</button>
@@ -149,26 +152,27 @@ INDEX_HTML = r'''
     </div>
   </div>
 
+
   <div class="card p-3">
     <div class="table-responsive">
       <table id="assetTable" class="table table-striped table-bordered align-middle">
         <thead>
           <tr>
-            <th>STT</th><th>Số CLC</th><th>Mã tài sản</th><th>Tên máy</th><th>Hãng</th><th>Model</th><th>Mô tả</th><th>Serial</th><th>Vị trí</th><th>Trạng thái</th><th>Ngày nhập</th><th>Hạn bảo hành</th>
+            <th>Số CLC</th><th>Mã tài sản</th><th>Tên máy</th><th>Hãng</th><th>Model</th><th>Mô tả</th><th>Serial</th><th>Vị trí</th><th>Trạng thái</th><th>Ngày nhập</th><th>Hạn bảo hành</th><th>Hiệu lực bảo hành</th>
           </tr>
           <tr class="filter-row">
-            <th><input data-col="0" oninput="applyFilters()"></th>
-            <th><input data-col="1" oninput="applyFilters()"></th>
-            <th><input data-col="2" oninput="applyFilters()"></th>
-            <th><input data-col="3" oninput="applyFilters()"></th>
-            <th><input data-col="4" oninput="applyFilters()"></th>
-            <th><input data-col="5" oninput="applyFilters()"></th>
-            <th><input data-col="6" oninput="applyFilters()"></th>
-            <th><input data-col="7" oninput="applyFilters()"></th>
-            <th><input data-col="8" oninput="applyFilters()"></th>
-            <th><input data-col="9" oninput="applyFilters()"></th>
-            <th><input data-col="10" oninput="applyFilters()"></th>
-            <th><input data-col="11" oninput="applyFilters()"></th>
+              <th><input data-col="0" oninput="applyFilters()"></th>
+              <th><input data-col="1" oninput="applyFilters()"></th>
+              <th><input data-col="2" oninput="applyFilters()"></th>
+              <th><input data-col="3" oninput="applyFilters()"></th>
+              <th><input data-col="4" oninput="applyFilters()"></th>
+              <th><input data-col="5" oninput="applyFilters()"></th>
+              <th><input data-col="6" oninput="applyFilters()"></th>
+              <th><input data-col="7" oninput="applyFilters()"></th>
+              <th><input data-col="8" oninput="applyFilters()"></th>
+              <th><input data-col="9" oninput="applyFilters()"></th>
+              <th><input data-col="10" oninput="applyFilters()"></th>
+              <th><input data-col="11" oninput="applyFilters()"></th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -290,29 +294,45 @@ function openHist(){ document.getElementById('histAlert').classList.add('d-none'
 async function loadTable(){
   const res = await fetch('/api/assets');
   const list = await res.json();
+
+  document.getElementById('totalAssets').innerText =
+        'Tổng số tài sản: ' + list.length;
+
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
+
   for(const a of list){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `\
-      <td>${a.index || a.index_num || ''}</td>\
-      <td>${a.clc || ''}</td>\
-      <td>${a.code || ''}</td>\
-      <td>${a.name || ''}</td>\
-      <td>${a.brand || ''}</td>\
-      <td>${a.model || ''}</td>\
-      <td>${a.description || ''}</td>\
-      <td class="serial-link">${a.serial || ''}</td>\
-      <td>${a.location || ''}</td>\
-      <td>${a.status || ''}</td>\
-      <td>${a.import_date || ''}</td>\
-      <td>${a.warranty_end || ''}</td>`;
-    tbody.appendChild(tr);
-    // serial clickable to toggle history
-    tr.querySelector('.serial-link').onclick = () => toggleHistory(tr, a.serial);
+      const tr = document.createElement('tr');
+      const today = new Date();
+      let statusWarranty = "Hết hạn";
+
+      if (a.warranty_end) {
+          const d = new Date(a.warranty_end);
+          if (d >= today) statusWarranty = "Còn hạn";
+      } else {
+          statusWarranty = "Hết hạn";
+      }
+
+      tr.innerHTML = `
+        <td>${a.clc || ''}</td>
+        <td>${a.code || ''}</td>
+        <td>${a.name || ''}</td>
+        <td>${a.brand || ''}</td>
+        <td>${a.model || ''}</td>
+        <td>${a.description || ''}</td>
+        <td class="serial-link">${a.serial || ''}</td>
+        <td>${a.location || ''}</td>
+        <td>${a.status || ''}</td>
+        <td>${a.import_date || ''}</td>
+        <td>${a.warranty_end || ''}</td>
+        <td>${statusWarranty}</td>   <!-- NEW -->
+      `;
+      tbody.appendChild(tr);
+      tr.querySelector('.serial-link').onclick = () => toggleHistory(tr, a.serial);
   }
   applyFilters();
 }
+
 
 function applyFilters(){
   const table = document.getElementById('assetTable');
