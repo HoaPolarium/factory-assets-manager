@@ -72,6 +72,7 @@ INDEX_HTML = r'''
     <div>
       <h3 class="mb-0">Quản lý tài sản</h3>
       <div id="totalAssets" class="text-muted mt-1" style="font-size:14px"></div>
+      <div id="filteredAssets" class="text-muted" style="font-size:14px"></div>
     </div>
     <div>
       <button class="btn btn-success me-1" onclick="openAdd()">Thêm sản phẩm</button>
@@ -127,7 +128,7 @@ INDEX_HTML = r'''
     <div class="mb-2"><label class="form-label">Vị trí *</label><input id="add_location" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Trạng thái *</label>
       <select id="add_status" class="form-select">
-        <option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option>
+        <option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option><option>Scrap</option>
       </select>
     </div>
     <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="add_import" class="form-control" type="date"></div>
@@ -151,7 +152,7 @@ INDEX_HTML = r'''
       <div class="mb-2"><label class="form-label">Mô tả</label><input id="edit_description" class="form-control" type="text"></div>
       <div class="mb-2"><label class="form-label">Serial</label><input id="edit_serial" class="form-control" disabled></div>
       <div class="mb-2"><label class="form-label">Vị trí</label><input id="edit_location" class="form-control"></div>
-      <div class="mb-2"><label class="form-label">Trạng thái</label><select id="edit_status" class="form-select"><option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option></select></div>
+      <div class="mb-2"><label class="form-label">Trạng thái</label><select id="edit_status" class="form-select"><option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option><option>Scrap</option></select></div>
       <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="edit_import" class="form-control" type="date"></div>
       <div class="mb-2"><label class="form-label">Hạn bảo hành</label><input id="edit_warranty" class="form-control" type="date"></div>  
     </div>
@@ -222,11 +223,27 @@ function openEdit(){ document.getElementById('editAlert').classList.add('d-none'
 function openDelete(){ delModal.show(); }
 function openHist(){ document.getElementById('histAlert').classList.add('d-none'); document.getElementById('hist_found').innerText=''; hist_target_identifier = null; histModal.show(); }
 
+function updateFilteredAssets(){
+  const table = document.getElementById('assetTable');
+  const rows = table.tBodies[0].rows;
+
+  let count = 0;
+  for (const r of rows){
+    if (!r.classList.contains("history-row") && r.style.display !== "none") {
+      count++;
+    }
+  }
+
+  document.getElementById("filteredAssets").innerText =
+      "Số tài sản đang được lọc: " + count;
+}
+
 async function loadTable(){
   const res = await fetch("/api/assets");
   assetCache = await res.json();
   renderTable(assetCache);
   updateTotalAssets();
+  updateFilteredAssets();
 }
 
 function updateTotalAssets(){
@@ -305,6 +322,7 @@ function applyFilters(){
     r.style.display = visible ? '' : 'none';
     const next = r.nextSibling;
     if(next && next.classList && next.classList.contains('history-row')) next.style.display = visible ? '' : 'none';
+    updateFilteredAssets();
   }
 }
 
