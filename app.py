@@ -327,12 +327,24 @@ function renderRow(a){
   tr.dataset.serial = a.serial;
 
   // Tính hiệu lực bảo hành
+  let statusWarranty = "";
   const today = new Date();
-  let statusWarranty = "Hết hạn";
-  if (a.warranty_end){
+
+  if (a.warranty_end) {
     const d = new Date(a.warranty_end);
-    if (d >= today) statusWarranty = "Còn hạn";
+
+    if (!isNaN(d.getTime())) {
+      // Có giá trị hợp lệ
+      statusWarranty = d >= today ? "Còn hạn" : "Hết hạn";
+    } else {
+      // Không parse được ngày → để rỗng
+      statusWarranty = "";
+    }
+  } else {
+    // Không có ngày bảo hành → để rỗng
+    statusWarranty = "";
   }
+
 
   tr.innerHTML = `
     <td>${a.clc || ""}</td>
@@ -986,20 +998,26 @@ def export_excel():
         ]
         ws1.append(headers)
 
-        from datetime import datetime
-
         # ==== Ghi từng dòng ====
         for i, a in enumerate(assets.data or [], start=1):
 
-            # Tính hiệu lực bảo hành
-            statusWarranty = "Hết hạn"
-            if a.get("warranty_end"):
+            # Tính hiệu lực bảo hành (sửa theo yêu cầu)
+            statusWarranty = ""
+
+            w_end = a.get("warranty_end")
+            if w_end:
                 try:
-                    d = datetime.strptime(a["warranty_end"], "%Y-%m-%d").date()
+                    d = datetime.strptime(w_end, "%Y-%m-%d").date()
                     if d >= date.today():
                         statusWarranty = "Còn hạn"
+                    else:
+                        statusWarranty = "Hết hạn"
                 except:
-                    pass
+                    # Nếu lỗi format ngày → để rỗng luôn
+                    statusWarranty = ""
+            else:
+                # Không có ngày bảo hành → để rỗng
+                statusWarranty = ""
 
             ws1.append([
                 i,
@@ -1016,6 +1034,7 @@ def export_excel():
                 a.get("warranty_end", ""),
                 statusWarranty
             ])
+
 
         # ==== Sheet lịch sử =====
         ws2 = wb.create_sheet("History")
