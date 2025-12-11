@@ -64,10 +64,61 @@ INDEX_HTML = r'''
     .filter-row input{width:100%;padding:4px}
     .code-link{color:#0d6efd;cursor:pointer}
     .history-row td{background:#fbfbfb}
+    body { 
+      overflow: hidden;  
+    }
+
+    .table-scroll {
+      max-height: 75vh;
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+
+    /* Cố định header và hàng filter */
+    #assetTable thead tr:first-child th {
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 20;
+    }
+
+    /* Sticky filter row ngay dưới header */
+    #assetTable thead tr.filter-row th {
+      position: sticky;
+      top: 48px;       /* ⇠ chỉnh theo chiều cao header thật */
+      background: white;
+      z-index: 19;
+    }
+
+    /* Giữ bảng không collapse để sticky không bị lệch */
+    #assetTable {
+      border-collapse: separate;
+    }
+
+
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      position: relative;
+      padding-right: 18px !important;
+    }
+
+    .sort-icon {
+      font-size: 11px;
+      opacity: 0.35;
+      margin-left: 4px;
+    }
+
+    .sort-icon.active {
+      opacity: 1;
+      font-weight: bold;
+    }
+                                                              
   </style>
 </head>
 <body>
-<div class="container">
+<div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-3">   
     <div>
       <h3 class="mb-0">Quản lý tài sản</h3>
@@ -85,11 +136,22 @@ INDEX_HTML = r'''
 
 
   <div class="card p-3">
-    <div class="table-responsive">
+    <div class="table-scroll">
       <table id="assetTable" class="table table-striped table-bordered align-middle">
         <thead>
           <tr>
-            <th>Số CLC</th><th>Mã tài sản</th><th>Tên máy</th><th>Hãng</th><th>Model</th><th>Mô tả</th><th>Serial</th><th>Vị trí</th><th>Trạng thái</th><th>Ngày nhập</th><th>Hạn bảo hành</th><th>Hiệu lực bảo hành</th>
+              <th class="sortable">Số CLC <span class="sort-icon">↕</span></th>
+              <th class="sortable">Mã tài sản <span class="sort-icon">↕</span></th>
+              <th class="sortable">Tên máy <span class="sort-icon">↕</span></th>
+              <th class="sortable">Hãng <span class="sort-icon">↕</span></th>
+              <th class="sortable">Model <span class="sort-icon">↕</span></th>
+              <th class="sortable">Mô tả <span class="sort-icon">↕</span></th>
+              <th class="sortable">Serial <span class="sort-icon">↕</span></th>
+              <th class="sortable">Vị trí <span class="sort-icon">↕</span></th>
+              <th class="sortable">Trạng thái <span class="sort-icon">↕</span></th>
+              <th class="sortable">Ngày nhập <span class="sort-icon">↕</span></th>
+              <th class="sortable">Hạn bảo hành <span class="sort-icon">↕</span></th>
+              <th class="sortable">Hiệu lực bảo hành <span class="sort-icon">↕</span></th>
           </tr>
           <tr class="filter-row">
               <th><input data-col="0" oninput="applyFilters()"></th>
@@ -325,6 +387,88 @@ function applyFilters(){
     updateFilteredAssets();
   }
 }
+
+let sortState = {}; // lưu trạng thái sort từng cột
+
+function updateSortIcons(columnIndex, state) {
+  const icons = document.querySelectorAll("#assetTable thead tr:first-child th .sort-icon");
+  icons.forEach(i => {
+    i.classList.remove("active");
+    i.textContent = "↕"; // reset
+  });
+
+  const currentIcon = document.querySelector(`#assetTable thead tr:first-child th:nth-child(${columnIndex + 1}) .sort-icon`);
+  if (!currentIcon) return;
+
+  if (state === "asc") {
+    currentIcon.textContent = "A↓Z";
+    currentIcon.classList.add("active");
+  }
+  else if (state === "desc") {
+    currentIcon.textContent = "Z↑A";
+    currentIcon.classList.add("active");
+  }
+}
+
+const columnMap = [
+  "clc",
+  "code",
+  "name",
+  "brand",
+  "model",
+  "description",
+  "serial",
+  "location",
+  "status",
+  "import_date",
+  "warranty_end",
+  null   // Hiệu lực bảo hành (không sort)
+];
+
+function sortTable(columnIndex) {
+  const field = columnMap[columnIndex];
+  if (!field) return; // cột không sort
+
+  const state = sortState[columnIndex] || "none";
+  const newState = state === "none" ? "asc" : state === "asc" ? "desc" : "none";
+  sortState[columnIndex] = newState;
+
+  updateSortIcons(columnIndex, newState);
+
+  let data = [...assetCache];
+
+  if (newState !== "none") {
+    data.sort((a, b) => {
+      const valA = a[field] || "";
+      const valB = b[field] || "";
+
+      // Ngày → sort đúng dạng date
+      if (field === "import_date" || field === "warranty_end") {
+        return newState === "asc"
+          ? new Date(valA) - new Date(valB)
+          : new Date(valB) - new Date(valA);
+      }
+
+      // Mặc định A-Z
+      return newState === "asc"
+        ? String(valA).localeCompare(String(valB), "vi")
+        : String(valB).localeCompare(String(valA), "vi");
+    });
+  }
+
+  renderTable(data);
+  applyFilters();
+  updateFilteredAssets();
+}
+
+
+function initSorting() {
+  const headers = document.querySelectorAll("#assetTable thead tr:first-child th.sortable");
+  headers.forEach((th, index) => {
+    th.addEventListener("click", () => sortTable(index));
+  });
+}
+
 
 async function doAdd(){
   const payload = {
@@ -609,7 +753,10 @@ async function toggleHistory(row, serial){
 }
 
 
-document.addEventListener('DOMContentLoaded', ()=>{ loadTable(); });
+document.addEventListener('DOMContentLoaded', ()=>{
+  loadTable();
+  initSorting();
+});
 </script>
 </body>
 </html>
