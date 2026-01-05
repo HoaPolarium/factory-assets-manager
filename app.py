@@ -14,8 +14,13 @@ from datetime import datetime, date
 from flask import Flask, request, jsonify, render_template_string, send_file
 from supabase import create_client
 import openpyxl
+from werkzeug.utils import secure_filename
+from werkzeug.exceptions import RequestEntityTooLarge
 
 app = Flask(__name__)
+
+# Giới hạn upload: 5MB
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
@@ -481,6 +486,12 @@ function initSorting() {
   });
 }
 
+function formatFileSize(bytes) {
+  if (!bytes) return "";
+  const kb = bytes / 1024;
+  if (kb < 1024) return kb.toFixed(1) + " KB";
+  return (kb / 1024).toFixed(2) + " MB";
+}
 
 async function doAdd(){
   const payload = {
@@ -692,7 +703,6 @@ async function doAddHistory(){
   hist_target_identifier = null;
 }
 
-
 async function toggleHistory(row, serial){
   let next = row.nextSibling;
 
@@ -712,56 +722,201 @@ async function toggleHistory(row, serial){
   const td = document.createElement('td');
   td.colSpan = 12;
 
+  // ===== XỬ LÝ LỊCH SỬ (BÊN TRÁI) =====
+  let historyHtml = '';
+
   if(data.error || data.length === 0){
-    td.innerHTML = '<em>Chưa có lịch sử</em>';
-  } 
-  else {
+    historyHtml = '<em>Chưa có lịch sử</em>';
+  } else {
     const faults = data.filter(h => h.type === 'fault');
     const calibs = data.filter(h => h.type === 'calib');
 
-    let html = '';
-
-    // ===== Lỗi =====
-    html += '<h6>Lịch sử lỗi</h6>';
+    // ----- Lỗi -----
+    historyHtml += '<h6>Lịch sử lỗi</h6>';
     if(faults.length){
-      html += `<table class="table table-sm">
-        <thead><tr><th>Seq</th><th>Tên lỗi</th><th>Ngày lỗi</th><th>Ngày gửi</th><th>Ngày nhận</th></tr></thead><tbody>`;
+      historyHtml += `
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Seq</th>
+              <th>Tên lỗi</th>
+              <th>Ngày lỗi</th>
+              <th>Ngày gửi</th>
+              <th>Ngày nhận</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
       for(const h of faults){
-        html += `<tr>
-          <td>${h.seq}</td>
-          <td>${h.fault || ''}</td>
-          <td>${h.fault_date || ''}</td>
-          <td>${h.sent_date || ''}</td>
-          <td>${h.return_date || ''}</td>
-        </tr>`;
+        historyHtml += `
+          <tr>
+            <td>${h.seq}</td>
+            <td>${h.fault || ''}</td>
+            <td>${h.fault_date || ''}</td>
+            <td>${h.sent_date || ''}</td>
+            <td>${h.return_date || ''}</td>
+          </tr>
+        `;
       }
-      html += '</tbody></table>';
+      historyHtml += '</tbody></table>';
     } else {
-      html += '<div><em>Không có</em></div>';
+      historyHtml += '<div><em>Không có</em></div>';
     }
 
-    // ===== Calib =====
-    html += '<h6 class="mt-3">Lịch sử Calib</h6>';
+    // ----- Calib -----
+    historyHtml += '<h6 class="mt-3">Lịch sử Calib</h6>';
     if(calibs.length){
-      html += `<table class="table table-sm">
-        <thead><tr><th>Seq</th><th>Ngày calib</th><th>Ngày hết hạn</th></tr></thead><tbody>`;
+      historyHtml += `
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Seq</th>
+              <th>Ngày calib</th>
+              <th>Ngày hết hạn</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
       for(const h of calibs){
-        html += `<tr>
-          <td>${h.seq}</td>
-          <td>${h.calib_date || ''}</td>
-          <td>${h.expire_date || ''}</td>
-        </tr>`;
+        historyHtml += `
+          <tr>
+            <td>${h.seq}</td>
+            <td>${h.calib_date || ''}</td>
+            <td>${h.expire_date || ''}</td>
+          </tr>
+        `;
       }
-      html += '</tbody></table>';
+      historyHtml += '</tbody></table>';
     } else {
-      html += '<div><em>Không có</em></div>';
+      historyHtml += '<div><em>Không có</em></div>';
     }
-
-    td.innerHTML = html;
   }
+
+  // ===== FILE (LUÔN LUÔN RENDER) =====
+  const filesHtml = await renderFiles(serial);
+
+  td.innerHTML = `
+    <div class="row">
+      <div class="col-md-7">
+        ${historyHtml}
+      </div>
+      <div class="col-md-5">
+        <h6>📎 File đính kèm</h6>
+        ${filesHtml}
+      </div>
+    </div>
+  `;
 
   tr.appendChild(td);
   row.parentNode.insertBefore(tr, row.nextSibling);
+}
+
+
+async function uploadFiles(serial) {
+  const input = document.getElementById(`file_input_${serial}`);
+  if (!input || input.files.length === 0) {
+    alert("Chọn ít nhất 1 file");
+    return;
+  }
+
+  const fd = new FormData();
+  for (const f of input.files) {
+    fd.append("files", f);
+  }
+
+  const res = await fetch(`/api/assets/${encodeURIComponent(serial)}/files`, {
+    method: "POST",
+    body: fd
+  });
+
+  if (!res.ok) {
+    let msg = "Upload file thất bại";
+    try {
+      const data = await res.json();
+      if (data.error) msg = data.error;
+    } catch (e) {}
+
+    alert(msg);
+    return;
+  }
+
+
+  // Reload lại history + file
+  toggleHistory(
+    document.querySelector(`tr[data-serial="${serial}"]`),
+    serial
+  );
+}
+
+
+async function renderFiles(serial) {
+  const res = await fetch(`/api/assets/${encodeURIComponent(serial)}/files`);
+  const files = await res.json();
+
+  let html = `
+    <div class="mb-2">
+      <input type="file" id="file_input_${serial}" class="form-control form-control-sm" multiple>
+      <button class="btn btn-sm btn-success mt-1"
+        onclick="uploadFiles('${serial}')">Thêm file</button>
+    </div>
+  `;
+
+  if (!files.length) {
+    html += "<em>Chưa có file đính kèm</em>";
+    return html;
+  }
+
+  html += `
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Tên file</th>
+          <th>Dung lượng</th>
+          <th>Ngày</th>
+          <th width="120">Thao tác</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  for (const f of files) {
+    html += `
+      <tr>
+        <td>${f.file_name}</td>
+        <td>${formatFileSize(f.file_size)}</td>
+        <td>${(f.created_at || "").substring(0,10)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary"
+            onclick="downloadFile('${f.id}')">Tải</button>
+          <button class="btn btn-sm btn-outline-danger ms-1"
+            onclick="deleteFile('${f.id}', '${serial}')">Xóa</button>
+        </td>
+      </tr>
+    `;
+  }
+
+  html += "</tbody></table>";
+  return html;
+}
+
+
+async function downloadFile(id) {
+  const res = await fetch(`/api/assets/files/${id}/download`);
+  const data = await res.json();
+  if (data.url) window.open(data.url, "_blank");
+}
+
+async function deleteFile(id, serial) {
+  if (!confirm("Bạn có chắc muốn xóa file này?")) return;
+
+  const res = await fetch(`/api/assets/files/${id}`, { method: "DELETE" });
+  if (!res.ok) return alert("Xóa file thất bại");
+
+  // reload lại history + file
+  toggleHistory(
+    document.querySelector(`tr[data-serial="${serial}"]`),
+    serial
+  );
 }
 
 
@@ -895,16 +1050,29 @@ def api_delete_asset_by_serial():
         return jsonify({"error": "Missing serial"}), 400
 
     try:
-        res = supabase.table("assets").select("*").eq("serial", serial).limit(1).execute()
-        if not res.data:
-            return jsonify({"error": "Asset not found"}), 404
+        # lấy danh sách file
+        files = supabase.table("asset_files") \
+            .select("file_path") \
+            .eq("serial", serial) \
+            .execute()
 
+        # xóa file trong storage
+        if files.data:
+            paths = [f["file_path"] for f in files.data]
+            supabase.storage.from_("asset-files").remove(paths)
+
+        # xóa metadata file
+        supabase.table("asset_files").delete().eq("serial", serial).execute()
+
+        # xóa asset
         supabase.table("assets").delete().eq("serial", serial).execute()
 
         return jsonify({"ok": True}), 200
+
     except Exception as e:
         app.logger.error("api_delete_asset_by_serial error: %s", e)
         return jsonify({"error": str(e)}), 500
+
 
 
 # ---- API: get history ----
@@ -1065,6 +1233,141 @@ def export_excel():
         app.logger.error("export_excel error: %s", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/assets/<serial>/files", methods=["POST"])
+def api_upload_asset_files(serial):
+
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+    # Kiểm tra có file không
+    if "files" not in request.files:
+        return jsonify({"error": "Không có file được gửi lên"}), 400
+
+    files = request.files.getlist("files")
+
+    # Kiểm tra asset tồn tại
+    chk = (
+        supabase.table("assets")
+        .select("serial")
+        .eq("serial", serial)
+        .limit(1)
+        .execute()
+    )
+    if not chk.data:
+        return jsonify({"error": "Asset không tồn tại"}), 404
+
+    uploaded = []
+
+    for f in files:
+        # 1️⃣ Chuẩn hóa tên file
+        filename = secure_filename(f.filename)
+        if not filename:
+            continue
+
+        # 2️⃣ Đo dung lượng file (AN TOÀN – KHÔNG DÙNG content_length)
+        f.stream.seek(0, os.SEEK_END)
+        file_size = f.stream.tell()
+        f.stream.seek(0)
+
+        if file_size > MAX_FILE_SIZE:
+            return jsonify({
+                "error": f"File '{filename}' vượt quá dung lượng cho phép (5MB)"
+            }), 400
+
+        name, ext = os.path.splitext(filename)
+
+        # 3️⃣ Xử lý TRÙNG TÊN FILE (tự động thêm timestamp)
+        path = f"{serial}/{filename}"
+
+        dup = (
+            supabase.table("asset_files")
+            .select("id")
+            .eq("serial", serial)
+            .eq("file_name", filename)
+            .limit(1)
+            .execute()
+        )
+
+        if dup.data:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = f"{name}_{ts}{ext}"
+            path = f"{serial}/{filename}"
+
+        # 4️⃣ Upload lên Supabase Storage
+        supabase.storage.from_("asset-files").upload(
+            path,
+            f.read(),
+            {"content-type": f.content_type}
+        )
+
+        # 5️⃣ Lưu metadata vào DB
+        supabase.table("asset_files").insert({
+            "serial": serial,
+            "file_name": filename,
+            "file_path": path,
+            "file_size": file_size,
+            "content_type": f.content_type
+        }).execute()
+
+        uploaded.append({
+            "file_name": filename,
+            "file_size": file_size
+        })
+
+    if not uploaded:
+        return jsonify({"error": "Không có file hợp lệ để upload"}), 400
+
+    return jsonify({
+        "ok": True,
+        "uploaded": uploaded
+    }), 201
+
+
+@app.route("/api/assets/<serial>/files", methods=["GET"])
+def api_list_asset_files(serial):
+    res = supabase.table("asset_files") \
+        .select("id,file_name,file_size,created_at") \
+        .eq("serial", serial) \
+        .order("created_at", desc=True) \
+        .execute()
+
+    return jsonify(res.data or []), 200
+
+@app.route("/api/assets/files/<file_id>/download", methods=["GET"])
+def api_download_file(file_id):
+    res = supabase.table("asset_files") \
+        .select("file_path") \
+        .eq("id", file_id) \
+        .single() \
+        .execute()
+
+    if not res.data:
+        return jsonify({"error": "File not found"}), 404
+
+    signed = supabase.storage \
+        .from_("asset-files") \
+        .create_signed_url(res.data["file_path"], 60)
+
+    return jsonify({"url": signed["signedURL"]}), 200
+
+@app.route("/api/assets/files/<file_id>", methods=["DELETE"])
+def api_delete_file(file_id):
+    res = supabase.table("asset_files") \
+        .select("file_path") \
+        .eq("id", file_id) \
+        .single() \
+        .execute()
+
+    if not res.data:
+        return jsonify({"error": "File not found"}), 404
+
+    supabase.storage.from_("asset-files").remove([res.data["file_path"]])
+    supabase.table("asset_files").delete().eq("id", file_id).execute()
+
+    return jsonify({"ok": True}), 200
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(e):
+    return jsonify({"error": "File vượt quá dung lượng cho phép (5MB)"}), 413
 
 @app.route("/health")
 def health():
