@@ -147,6 +147,11 @@ INDEX_HTML = r'''
           <tr>
               <th class="sortable">Số CLC <span class="sort-icon">↕</span></th>
               <th class="sortable">Mã tài sản <span class="sort-icon">↕</span></th>
+              <th class="sortable">Số tờ khai <span class="sort-icon">↕</span></th>
+              <th class="sortable">Ngày tờ khai <span class="sort-icon">↕</span></th>
+              <th class="sortable">Số invoice <span class="sort-icon">↕</span></th>
+              <th class="sortable">Ngày hóa đơn <span class="sort-icon">↕</span></th>
+              <th class="sortable">Nhà cung cấp <span class="sort-icon">↕</span></th>
               <th class="sortable">Tên máy <span class="sort-icon">↕</span></th>
               <th class="sortable">Hãng <span class="sort-icon">↕</span></th>
               <th class="sortable">Model <span class="sort-icon">↕</span></th>
@@ -171,6 +176,11 @@ INDEX_HTML = r'''
               <th><input data-col="9" oninput="applyFilters()"></th>
               <th><input data-col="10" oninput="applyFilters()"></th>
               <th><input data-col="11" oninput="applyFilters()"></th>
+              <th><input data-col="12" oninput="applyFilters()"></th>
+              <th><input data-col="13" oninput="applyFilters()"></th>
+              <th><input data-col="14" oninput="applyFilters()"></th>
+              <th><input data-col="15" oninput="applyFilters()"></th>
+              <th><input data-col="16" oninput="applyFilters()"></th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -187,6 +197,11 @@ INDEX_HTML = r'''
     <div id="addAlert" class="alert alert-danger d-none"></div>
     <div class="mb-2"><label class="form-label">Số CLC</label><input id="add_clc" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="add_code" class="form-control" type="text"></div>
+    <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="add_declaration_no" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="add_declaration_date" type="date" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Số invoice</label><input id="add_invoice_no" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Ngày hóa đơn</label><input id="add_invoice_date" type="date" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Nhà cung cấp</label><input id="add_supplier" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Tên máy *</label><input id="add_name" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Hãng *</label><input id="add_brand" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Model *</label><input id="add_model" class="form-control" type="text"></div>
@@ -212,6 +227,11 @@ INDEX_HTML = r'''
     <div class="mb-2 d-flex"><input id="edit_lookup_code" class="form-control me-2" placeholder="Nhập mã serial để load"><button class="btn btn-outline-primary" onclick="loadForEdit()">Tải</button></div>
     <div id="editForm" style="display:none">
       <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="edit_code" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="edit_declaration_no" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="edit_declaration_date" type="date" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Số invoice</label><input id="edit_invoice_no" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Ngày hóa đơn</label><input id="edit_invoice_date" type="date" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Nhà cung cấp</label><input id="edit_supplier" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Số CLC</label><input id="edit_clc" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Tên máy</label><input id="edit_name" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Hãng</label><input id="edit_brand" class="form-control"></div>
@@ -354,6 +374,11 @@ function renderRow(a){
   tr.innerHTML = `
     <td>${a.clc || ""}</td>
     <td>${a.code || ""}</td>
+    <td>${a.declaration_no || ""}</td>
+    <td>${a.declaration_date || ""}</td>
+    <td>${a.invoice_no || ""}</td>
+    <td>${a.invoice_date || ""}</td>
+    <td>${a.supplier || ""}</td>
     <td>${a.name || ""}</td>
     <td>${a.brand || ""}</td>
     <td>${a.model || ""}</td>
@@ -430,6 +455,11 @@ function updateSortIcons(columnIndex, state) {
 const columnMap = [
   "clc",
   "code",
+  "declaration_no",
+  "declaration_date",
+  "invoice_no",
+  "invoice_date",
+  "supplier",
   "name",
   "brand",
   "model",
@@ -439,7 +469,7 @@ const columnMap = [
   "status",
   "import_date",
   "warranty_end",
-  null   // Hiệu lực bảo hành (không sort)
+  null
 ];
 
 function sortTable(columnIndex) {
@@ -497,6 +527,11 @@ async function doAdd(){
   const payload = {
     clc: document.getElementById('add_clc').value.trim(),
     code: document.getElementById('add_code').value.trim(),
+    declaration_no: document.getElementById('add_declaration_no').value.trim(),
+    declaration_date: document.getElementById('add_declaration_date').value,
+    invoice_no: document.getElementById('add_invoice_no').value.trim(),
+    invoice_date: document.getElementById('add_invoice_date').value,
+    supplier: document.getElementById('add_supplier').value.trim(),
     name: document.getElementById('add_name').value.trim(),
     brand: document.getElementById('add_brand').value.trim(),
     model: document.getElementById('add_model').value.trim(),
@@ -528,6 +563,11 @@ async function loadForEdit(){
   if(!res.ok){ const d = await res.json(); document.getElementById('editAlert').classList.remove('d-none'); document.getElementById('editAlert').innerText = d.error || 'Không tìm thấy'; return; }
   const a = await res.json();
   document.getElementById('edit_code').value = a.code || '';
+  document.getElementById('edit_declaration_no').value = a.declaration_no || '';
+  document.getElementById('edit_declaration_date').value = a.declaration_date || '';
+  document.getElementById('edit_invoice_no').value = a.invoice_no || '';
+  document.getElementById('edit_invoice_date').value = a.invoice_date || '';
+  document.getElementById('edit_supplier').value = a.supplier || '';
   document.getElementById('edit_clc').value = a.clc || '';
   document.getElementById('edit_name').value = a.name || '';
   document.getElementById('edit_brand').value = a.brand || '';
@@ -553,6 +593,11 @@ async function doEdit() {
   const payload = {
     clc: document.getElementById('edit_clc').value.trim(),
     code: document.getElementById('edit_code').value.trim(),
+    declaration_no: document.getElementById('edit_declaration_no').value.trim(),
+    declaration_date: document.getElementById('edit_declaration_date').value,
+    invoice_no: document.getElementById('edit_invoice_no').value.trim(),
+    invoice_date: document.getElementById('edit_invoice_date').value,
+    supplier: document.getElementById('edit_supplier').value.trim(),
     name: document.getElementById('edit_name').value.trim(),
     brand: document.getElementById('edit_brand').value.trim(),
     model: document.getElementById('edit_model').value.trim(),
@@ -1012,7 +1057,9 @@ def api_update_asset(serial):
 
         allowed_fields = {
             "clc", "code", "name", "brand", "model", "serial",
-            "location", "status", "import_date", "warranty_end", "description"
+            "location", "status", "import_date", "warranty_end", "description",
+            "declaration_no", "declaration_date", "invoice_no", "invoice_date",
+            "supplier",
         }
 
         update_data = {k: v for k, v in body.items() if k in allowed_fields}
@@ -1160,7 +1207,9 @@ def export_excel():
 
         # ==== Header GIỐNG GIAO DIỆN ====
         headers = [
-            "STT", "Số CLC", "Mã tài sản", "Tên máy", "Hãng", "Model",
+            "STT", "Số CLC", "Mã tài sản", "Số tờ khai",
+            "Ngày tờ khai", "Số invoice", "Ngày hóa đơn",
+            "Nhà cung cấp", "Tên máy", "Hãng", "Model",
             "Mô tả", "Serial", "Vị trí", "Trạng thái",
             "Ngày nhập", "Hạn bảo hành", "Hiệu lực bảo hành"
         ]
@@ -1191,6 +1240,11 @@ def export_excel():
                 i,
                 a.get("clc", ""),
                 a.get("code", ""),
+                a.get("declaration_no", ""),
+                a.get("declaration_date", ""),
+                a.get("invoice_no", ""),
+                a.get("invoice_date", ""),
+                a.get("supplier", ""),
                 a.get("name", ""),
                 a.get("brand", ""),
                 a.get("model", ""),
