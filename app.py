@@ -41,9 +41,11 @@ def transform_asset_for_frontend(a):
 
 def normalize_dates(data):
     for field in [
-        "fault_date", "sent_date", "return_date",
-        "calib_date", "expire_date",
-        "import_date", "warranty_end"
+      "fault_date", "sent_date", "return_date",
+      "calib_date", "expire_date",
+      "import_date", "warranty_end",
+      "declaration_date",
+      "invoice_date"
     ]:
         if field in data and data[field] == "":
             data[field] = None
