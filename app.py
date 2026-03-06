@@ -133,10 +133,9 @@ INDEX_HTML = r'''
       <div id="filteredAssets" class="text-muted" style="font-size:14px"></div>
     </div>
     <div>
-      <button class="btn btn-success me-1" onclick="openAdd()">Thêm sản phẩm</button>
-      <button class="btn btn-secondary me-1" onclick="openEdit()">Sửa thông tin</button>
-      <button class="btn btn-danger me-1" onclick="openDelete()">Xóa</button>
-      <button class="btn btn-outline-primary" onclick="openHist()">Thêm lịch sử</button>
+      <button class="btn btn-success me-1" onclick="openAdd()">Thêm tài sản</button>
+      <button class="btn btn-danger me-1" onclick="openDelete()">Xóa tài sản</button>
+      <button class="btn btn-outline-primary" onclick="openHist()">Thêm lịch sử tài sản</button>
       <a class="btn btn-outline-success ms-2" href="/export/excel">Xuất Excel</a>
     </div>
   </div>
@@ -147,6 +146,7 @@ INDEX_HTML = r'''
       <table id="assetTable" class="table table-striped table-bordered align-middle">
         <thead>
           <tr>
+              <th width="40"></th>
               <th class="sortable">Số CLC <span class="sort-icon">↕</span></th>
               <th class="sortable">Mã tài sản <span class="sort-icon">↕</span></th>
               <th class="sortable">Số tờ khai <span class="sort-icon">↕</span></th>
@@ -201,16 +201,16 @@ INDEX_HTML = r'''
     <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="add_code" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="add_declaration_no" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="add_declaration_date" type="date" class="form-control"></div>
-    <div class="mb-2"><label class="form-label">Số invoice</label><input id="add_invoice_no" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Số invoice *</label><input id="add_invoice_no" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Ngày hóa đơn</label><input id="add_invoice_date" type="date" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Nhà cung cấp</label><input id="add_supplier" class="form-control"></div>
-    <div class="mb-2"><label class="form-label">Tên máy *</label><input id="add_name" class="form-control" type="text"></div>
-    <div class="mb-2"><label class="form-label">Hãng *</label><input id="add_brand" class="form-control" type="text"></div>
-    <div class="mb-2"><label class="form-label">Model *</label><input id="add_model" class="form-control" type="text"></div>
+    <div class="mb-2"><label class="form-label">Tên máy</label><input id="add_name" class="form-control" type="text"></div>
+    <div class="mb-2"><label class="form-label">Hãng</label><input id="add_brand" class="form-control" type="text"></div>
+    <div class="mb-2"><label class="form-label">Model</label><input id="add_model" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Mô tả</label><input id="add_description" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Serial *</label><input id="add_serial" class="form-control" type="text"></div>
-    <div class="mb-2"><label class="form-label">Vị trí *</label><input id="add_location" class="form-control" type="text"></div>
-    <div class="mb-2"><label class="form-label">Trạng thái *</label>
+    <div class="mb-2"><label class="form-label">Vị trí</label><input id="add_location" class="form-control" type="text"></div>
+    <div class="mb-2"><label class="form-label">Trạng thái</label>
       <select id="add_status" class="form-select">
         <option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option><option>Scrap</option>
       </select>
@@ -226,7 +226,6 @@ INDEX_HTML = r'''
   <div class="modal-header"><h5 class="modal-title">Sửa thông tin tài sản</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
     <div id="editAlert" class="alert alert-danger d-none"></div>
-    <div class="mb-2 d-flex"><input id="edit_lookup_code" class="form-control me-2" placeholder="Nhập mã serial để load"><button class="btn btn-outline-primary" onclick="loadForEdit()">Tải</button></div>
     <div id="editForm" style="display:none">
       <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="edit_code" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="edit_declaration_no" class="form-control"></div>
@@ -239,7 +238,7 @@ INDEX_HTML = r'''
       <div class="mb-2"><label class="form-label">Hãng</label><input id="edit_brand" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Model</label><input id="edit_model" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Mô tả</label><input id="edit_description" class="form-control" type="text"></div>
-      <div class="mb-2"><label class="form-label">Serial</label><input id="edit_serial" class="form-control" disabled></div>
+      <div class="mb-2"><label class="form-label">Serial</label><input id="edit_serial" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Vị trí</label><input id="edit_location" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Trạng thái</label><select id="edit_status" class="form-select"><option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option><option>Scrap</option></select></div>
       <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="edit_import" class="form-control" type="date"></div>
@@ -252,7 +251,15 @@ INDEX_HTML = r'''
 <!-- Delete -->
 <div class="modal" id="modalDelete" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
   <div class="modal-header"><h5 class="modal-title">Xóa tài sản</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body"><input id="del_code" class="form-control" placeholder="Nhập Serial"></div>
+  <div class="mb-2">
+    <label class="form-label">Serial</label>
+    <input id="del_serial" class="form-control" placeholder="Nhập Serial">
+  </div>
+
+  <div class="mb-2">
+    <label class="form-label">Số Invoice</label>
+    <input id="del_invoice" class="form-control" placeholder="Nhập Số invoice">
+  </div>
   <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button><button class="btn btn-danger" onclick="doDelete()">Xóa</button></div>
 </div></div></div>
 
@@ -351,7 +358,16 @@ function renderTable(list){
 
 function renderRow(a){
   const tr = document.createElement("tr");
-  tr.dataset.serial = a.serial;
+  tr.style.cursor = "pointer";
+  tr.addEventListener("click", function(e){
+    // tránh click vào button bên trong history
+    if(e.target.closest("span")) return;
+    if(e.target.tagName === "BUTTON") return;
+    toggleHistory(tr, a.serial);
+  });
+
+  tr.dataset.id = a.id;
+  tr.dataset.serial = a.serial || "";
 
   // Tính hiệu lực bảo hành
   let statusWarranty = "";
@@ -374,6 +390,11 @@ function renderRow(a){
 
 
   tr.innerHTML = `
+    <td style="text-align:center">
+      <span style="cursor:pointer;font-size:16px"
+        onclick="openEditFromRow(${a.id})">🔧</span>
+    </td>
+
     <td>${a.clc || ""}</td>
     <td>${a.code || ""}</td>
     <td>${a.declaration_no || ""}</td>
@@ -385,10 +406,7 @@ function renderRow(a){
     <td>${a.brand || ""}</td>
     <td>${a.model || ""}</td>
     <td>${a.description || ""}</td>
-    <td class="serial-link" style="cursor:pointer"
-        onclick="toggleHistory(this.parentNode, '${a.serial}')">
-        ${a.serial}
-    </td>
+    <td>${a.serial || ""}</td>
     <td>${a.location || ""}</td>
     <td>${a.status || ""}</td>
     <td>${a.import_date || ""}</td>
@@ -399,12 +417,18 @@ function renderRow(a){
   return tr;
 }
 
-function updateRowBySerial(serial, updated){
-  const tr = document.querySelector(`#assetTable tr[data-serial="${serial}"]`);
-  if (tr){
-    const newRow = renderRow(updated);
-    tr.innerHTML = newRow.innerHTML;
-  }
+function updateRowById(id, updated){
+
+  const tr = document.querySelector(`#assetTable tr[data-id="${id}"]`);
+
+  if(!tr) return;
+
+  const newRow = renderRow(updated);
+
+  tr.innerHTML = newRow.innerHTML;
+
+  // update dataset
+  tr.dataset.serial = updated.serial || "";
 }
 
 function appendRow(a){
@@ -525,6 +549,47 @@ function formatFileSize(bytes) {
   return (kb / 1024).toFixed(2) + " MB";
 }
 
+function openEditFromRow(id){
+
+  const a = assetCache.find(x => x.id === id);
+  if(!a){
+    alert("Không tìm thấy asset");
+    return;
+  }
+  document.getElementById('edit_serial').dataset.assetId = id;
+
+  if(!a){
+    alert("Không tìm thấy asset");
+    return;
+  }
+
+  document.getElementById('edit_code').value = a.code || '';
+  document.getElementById('edit_clc').value = a.clc || '';
+  document.getElementById('edit_name').value = a.name || '';
+  document.getElementById('edit_brand').value = a.brand || '';
+  document.getElementById('edit_model').value = a.model || '';
+  document.getElementById('edit_serial').value = a.serial || '';
+  document.getElementById('edit_location').value = a.location || '';
+  document.getElementById('edit_status').value = a.status || '';
+  document.getElementById('edit_import').value = a.import_date || '';
+  document.getElementById('edit_warranty').value = a.warranty_end || '';
+  document.getElementById('edit_description').value = a.description || '';
+
+  // nếu bạn có các field mới
+  if(document.getElementById('edit_invoice_no'))
+    document.getElementById('edit_invoice_no').value = a.invoice_no || '';
+
+  if(document.getElementById('edit_declaration_no'))
+    document.getElementById('edit_declaration_no').value = a.declaration_no || '';
+
+  if(document.getElementById('edit_supplier'))
+    document.getElementById('edit_supplier').value = a.supplier || '';
+
+  document.getElementById('editForm').style.display = 'block';
+
+  editModal.show();
+}
+
 async function doAdd(){
   const payload = {
     clc: document.getElementById('add_clc').value.trim(),
@@ -558,39 +623,10 @@ async function doAdd(){
   ['add_clc','add_code','add_name','add_brand','add_model','add_serial','add_location','add_import','add_warranty','add_description'].forEach(id=>document.getElementById(id).value='');
 }
 
-async function loadForEdit(){
-  const code = document.getElementById('edit_lookup_code').value.trim();
-  if(!code){ document.getElementById('editAlert').classList.remove('d-none'); document.getElementById('editAlert').innerText='Nhập mã tài sản'; return; }
-  const res = await fetch('/api/assets/' + encodeURIComponent(code));
-  if(!res.ok){ const d = await res.json(); document.getElementById('editAlert').classList.remove('d-none'); document.getElementById('editAlert').innerText = d.error || 'Không tìm thấy'; return; }
-  const a = await res.json();
-  document.getElementById('edit_code').value = a.code || '';
-  document.getElementById('edit_declaration_no').value = a.declaration_no || '';
-  document.getElementById('edit_declaration_date').value = a.declaration_date || '';
-  document.getElementById('edit_invoice_no').value = a.invoice_no || '';
-  document.getElementById('edit_invoice_date').value = a.invoice_date || '';
-  document.getElementById('edit_supplier').value = a.supplier || '';
-  document.getElementById('edit_clc').value = a.clc || '';
-  document.getElementById('edit_name').value = a.name || '';
-  document.getElementById('edit_brand').value = a.brand || '';
-  document.getElementById('edit_model').value = a.model || '';
-  document.getElementById('edit_serial').value = a.serial || '';
-  document.getElementById('edit_location').value = a.location || '';
-  document.getElementById('edit_status').value = a.status || '';
-  document.getElementById('edit_import').value = a.import_date || '';
-  document.getElementById('edit_warranty').value = a.warranty_end || '';
-  document.getElementById('edit_description').value = a.description || '';
-  document.getElementById('editForm').style.display = 'block';
-}
 
 async function doEdit() {
-  const serial = document.getElementById('edit_serial').value.trim();   
 
-  if (!serial) {
-    document.getElementById('editAlert').classList.remove('d-none');
-    document.getElementById('editAlert').innerText = "Thiếu serial — không thể cập nhật";
-    return;
-  }
+  const assetId = document.getElementById('edit_serial').dataset.assetId;
 
   const payload = {
     clc: document.getElementById('edit_clc').value.trim(),
@@ -603,7 +639,7 @@ async function doEdit() {
     name: document.getElementById('edit_name').value.trim(),
     brand: document.getElementById('edit_brand').value.trim(),
     model: document.getElementById('edit_model').value.trim(),
-    serial: serial,
+    serial: document.getElementById('edit_serial').value.trim(),
     location: document.getElementById('edit_location').value.trim(),
     status: document.getElementById('edit_status').value,
     import_date: document.getElementById('edit_import').value,
@@ -611,7 +647,7 @@ async function doEdit() {
     description: document.getElementById('edit_description').value.trim()
   };
 
-  const res = await fetch('/api/assets/' + encodeURIComponent(serial), {
+  const res = await fetch('/api/assets/' + assetId, {
     method:'PUT',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload)
@@ -626,33 +662,53 @@ async function doEdit() {
     return;
   }
 
-  // Cập nhật UI ngay lập tức
-  updateRowBySerial(serial, data);
+  updateRowById(assetId, data);
 
-  // Cập nhật lại cache
-  const idx = assetCache.findIndex(a => a.serial === serial);
+  const idx = assetCache.findIndex(a => a.id == assetId);
   if (idx !== -1) assetCache[idx] = data;
 
   editModal.hide();
-  document.getElementById('editForm').style.display = 'none';
 }
 
 
-
 async function doDelete(){
-  const serial = document.getElementById('del_code').value.trim();
-  if(!serial) return alert('Nhập serial để xóa');
-  if(!confirm('Bạn có chắc muốn xóa serial: ' + serial + ' ?')) return;
 
-  const res = await fetch('/api/assets?serial=' + encodeURIComponent(serial), {
+  const serial = document.getElementById('del_serial').value.trim();
+  const invoice = document.getElementById('del_invoice').value.trim();
+
+  if(!serial && !invoice){
+    alert("Nhập Serial hoặc Số invoice để xóa");
+    return;
+  }
+
+  let url = "/api/assets/delete?";
+  if(serial){
+    url += "serial=" + encodeURIComponent(serial);
+  }
+  else{
+    url += "invoice=" + encodeURIComponent(invoice);
+  }
+
+  if(!confirm("Bạn có chắc muốn xóa tài sản?")) return;
+
+  const res = await fetch(url,{
     method:'DELETE'
   });
 
   const data = await res.json();
-  if(!res.ok) return alert(data.error || 'Có lỗi');
+
+  if(!res.ok){
+    alert(data.error || "Có lỗi khi xóa");
+    return;
+  }
+
+  alert(data.message || "Xóa thành công");
+
   delModal.hide();
   loadTable();
-  document.getElementById('del_code').value='';
+
+  document.getElementById('del_serial').value = "";
+  document.getElementById('del_invoice').value = "";
 }
 
 // lookup asset by CLC or Serial for history modal
@@ -750,16 +806,22 @@ async function doAddHistory(){
   hist_target_identifier = null;
 }
 
+let historyLoading = {};
+
 async function toggleHistory(row, serial){
+
+  if(historyLoading[serial]) return;
+  historyLoading[serial] = true;
+
   let next = row.nextSibling;
 
-  // Nếu đang mở → đóng lại
+  // nếu đang mở → đóng
   if(next && next.classList && next.classList.contains('history-row')){
     next.remove();
+    historyLoading[serial] = false;
     return;
   }
 
-  // Gọi lịch sử theo serial
   const res = await fetch('/api/assets/history/' + encodeURIComponent(serial));
   const data = await res.json();
 
@@ -769,7 +831,7 @@ async function toggleHistory(row, serial){
   const td = document.createElement('td');
   td.colSpan = 12;
 
-  // ===== XỬ LÝ LỊCH SỬ (BÊN TRÁI) =====
+  // render history như cũ
   let historyHtml = '';
 
   if(data.error || data.length === 0){
@@ -778,86 +840,63 @@ async function toggleHistory(row, serial){
     const faults = data.filter(h => h.type === 'fault');
     const calibs = data.filter(h => h.type === 'calib');
 
-    // ----- Lỗi -----
     historyHtml += '<h6>Lịch sử lỗi</h6>';
+
     if(faults.length){
-      historyHtml += `
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th>Seq</th>
-              <th>Tên lỗi</th>
-              <th>Ngày lỗi</th>
-              <th>Ngày gửi</th>
-              <th>Ngày nhận</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
+      historyHtml += `<table class="table table-sm">
+      <thead><tr><th>Seq</th><th>Tên lỗi</th><th>Ngày lỗi</th><th>Ngày gửi</th><th>Ngày nhận</th></tr></thead><tbody>`;
+
       for(const h of faults){
-        historyHtml += `
-          <tr>
-            <td>${h.seq}</td>
-            <td>${h.fault || ''}</td>
-            <td>${h.fault_date || ''}</td>
-            <td>${h.sent_date || ''}</td>
-            <td>${h.return_date || ''}</td>
-          </tr>
-        `;
+        historyHtml += `<tr>
+        <td>${h.seq}</td>
+        <td>${h.fault || ''}</td>
+        <td>${h.fault_date || ''}</td>
+        <td>${h.sent_date || ''}</td>
+        <td>${h.return_date || ''}</td>
+        </tr>`;
       }
+
       historyHtml += '</tbody></table>';
     } else {
       historyHtml += '<div><em>Không có</em></div>';
     }
 
-    // ----- Calib -----
     historyHtml += '<h6 class="mt-3">Lịch sử Calib</h6>';
+
     if(calibs.length){
-      historyHtml += `
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th>Seq</th>
-              <th>Ngày calib</th>
-              <th>Ngày hết hạn</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
+      historyHtml += `<table class="table table-sm">
+      <thead><tr><th>Seq</th><th>Ngày calib</th><th>Ngày hết hạn</th></tr></thead><tbody>`;
+
       for(const h of calibs){
-        historyHtml += `
-          <tr>
-            <td>${h.seq}</td>
-            <td>${h.calib_date || ''}</td>
-            <td>${h.expire_date || ''}</td>
-          </tr>
-        `;
+        historyHtml += `<tr>
+        <td>${h.seq}</td>
+        <td>${h.calib_date || ''}</td>
+        <td>${h.expire_date || ''}</td>
+        </tr>`;
       }
+
       historyHtml += '</tbody></table>';
     } else {
       historyHtml += '<div><em>Không có</em></div>';
     }
   }
 
-  // ===== FILE (LUÔN LUÔN RENDER) =====
   const filesHtml = await renderFiles(serial);
 
   td.innerHTML = `
-    <div class="row">
-      <div class="col-md-7">
-        ${historyHtml}
-      </div>
-      <div class="col-md-5">
-        <h6>📎 File đính kèm</h6>
-        ${filesHtml}
-      </div>
+  <div class="row">
+    <div class="col-md-7">${historyHtml}</div>
+    <div class="col-md-5">
+      <h6>📎 File đính kèm</h6>
+      ${filesHtml}
     </div>
-  `;
+  </div>`;
 
   tr.appendChild(td);
   row.parentNode.insertBefore(tr, row.nextSibling);
-}
 
+  historyLoading[serial] = false;
+}
 
 async function uploadFiles(serial) {
   const input = document.getElementById(`file_input_${serial}`);
@@ -1004,22 +1043,37 @@ def api_list_assets():
 def api_add_asset():
     data = request.get_json() or {}
 
-    required = ['name', 'brand', 'model', 'serial', 'location', 'status']
-    missing = [k for k in required if not data.get(k)]
-    if missing:
-        return jsonify({"error": "Thiếu thông tin", "missing_fields": missing}), 400
+    # Bắt buộc phải có serial hoặc invoice
+    if not data.get("serial") and not data.get("invoice_no"):
+        return jsonify({
+            "error": "Phải nhập Serial hoặc Số invoice"
+        }), 400
 
     try:
+
+        # check trùng mã tài sản
         if data.get("code"):
-            dup = supabase.table("assets").select("code").eq("code", data["code"]).limit(1).execute()
+            dup = supabase.table("assets") \
+                .select("code") \
+                .eq("code", data["code"]) \
+                .limit(1) \
+                .execute()
+
             if dup.data:
                 return jsonify({"error": "Mã tài sản đã tồn tại"}), 400
 
+        # check trùng serial
         if data.get("serial"):
-            dup2 = supabase.table("assets").select("serial").eq("serial", data["serial"]).limit(1).execute()
+            dup2 = supabase.table("assets") \
+                .select("serial") \
+                .eq("serial", data["serial"]) \
+                .limit(1) \
+                .execute()
+
             if dup2.data:
                 return jsonify({"error": "Serial đã tồn tại"}), 400
 
+        # xử lý date rỗng
         data = normalize_dates(data)
 
         ins = supabase.table("assets").insert(data).execute()
@@ -1045,13 +1099,13 @@ def api_get_asset(serial):
         return jsonify({"error": str(e)}), 500
 
 # ---- API UPDATE ASSET ----
-@app.route("/api/assets/<serial>", methods=["PUT", "PATCH"])
-def api_update_asset(serial):
+@app.route("/api/assets/<int:asset_id>", methods=["PUT", "PATCH"])
+def api_update_asset(asset_id):
     try:
         body = request.get_json() or {}
         body = normalize_dates(body)
 
-        existing = supabase.table("assets").select("*").eq("serial", serial).single().execute()
+        existing = supabase.table("assets").select("*").eq("id", asset_id).single().execute()
         if not existing.data:
             return jsonify({"error": "Asset not found"}), 404
 
@@ -1079,7 +1133,7 @@ def api_update_asset(serial):
         res = (
             supabase.table("assets")
             .update(update_data)
-            .eq("serial", serial)
+            .eq("id", asset_id)
             .execute()
         )
 
@@ -1091,35 +1145,70 @@ def api_update_asset(serial):
 
 
 # ---- API DELETE ----
-@app.route("/api/assets", methods=["DELETE"])
-def api_delete_asset_by_serial():
-    serial = request.args.get("serial") or (request.get_json(silent=True) or {}).get("serial")
+@app.route("/api/assets/delete", methods=["DELETE"])
+def api_delete_asset():
 
-    if not serial:
-        return jsonify({"error": "Missing serial"}), 400
+    serial = request.args.get("serial")
+    invoice = request.args.get("invoice")
+
+    if not serial and not invoice:
+        return jsonify({"error": "Missing serial hoặc invoice"}), 400
 
     try:
-        # lấy danh sách file
-        files = supabase.table("asset_files") \
-            .select("file_path") \
-            .eq("serial", serial) \
+
+        # ===== XÓA THEO SERIAL =====
+        if serial:
+
+            files = supabase.table("asset_files") \
+                .select("file_path") \
+                .eq("serial", serial) \
+                .execute()
+
+            if files.data:
+                paths = [f["file_path"] for f in files.data]
+                supabase.storage.from_("asset-files").remove(paths)
+
+            supabase.table("asset_files").delete().eq("serial", serial).execute()
+            supabase.table("assets").delete().eq("serial", serial).execute()
+
+            return jsonify({"message": "Đã xóa tài sản theo serial"}), 200
+
+
+        # ===== XÓA THEO INVOICE =====
+
+        assets = supabase.table("assets") \
+            .select("serial") \
+            .eq("invoice_no", invoice) \
             .execute()
 
-        # xóa file trong storage
-        if files.data:
-            paths = [f["file_path"] for f in files.data]
-            supabase.storage.from_("asset-files").remove(paths)
+        if not assets.data:
+            return jsonify({"error": "Không tìm thấy tài sản với invoice này"}), 404
 
-        # xóa metadata file
-        supabase.table("asset_files").delete().eq("serial", serial).execute()
+        serials = [a["serial"] for a in assets.data if a["serial"]]
 
-        # xóa asset
-        supabase.table("assets").delete().eq("serial", serial).execute()
+        # xóa file storage
+        if serials:
+            files = supabase.table("asset_files") \
+                .select("file_path") \
+                .in_("serial", serials) \
+                .execute()
 
-        return jsonify({"ok": True}), 200
+            if files.data:
+                paths = [f["file_path"] for f in files.data]
+                supabase.storage.from_("asset-files").remove(paths)
+
+            supabase.table("asset_files").delete().in_("serial", serials).execute()
+
+        # xóa assets
+        supabase.table("assets").delete().eq("invoice_no", invoice).execute()
+
+        return jsonify({
+            "message": f"Đã xóa {len(assets.data)} tài sản theo invoice"
+        }), 200
+
 
     except Exception as e:
-        app.logger.error("api_delete_asset_by_serial error: %s", e)
+        app.logger.error("api_delete_asset error: %s", e)
         return jsonify({"error": str(e)}), 500
 
 
