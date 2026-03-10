@@ -174,6 +174,7 @@ INDEX_HTML = r'''
               <th width="40"></th>
               <th class="sortable">Số CLC <span class="sort-icon">↕</span></th>
               <th class="sortable">Mã tài sản <span class="sort-icon">↕</span></th>
+              <th class="sortable">Mã BC <span class="sort-icon">↕</span></th>
               <th class="sortable">Số tờ khai <span class="sort-icon">↕</span></th>
               <th class="sortable">Ngày tờ khai <span class="sort-icon">↕</span></th>
               <th class="sortable">Số invoice <span class="sort-icon">↕</span></th>
@@ -208,6 +209,7 @@ INDEX_HTML = r'''
               <th><input data-col="14" oninput="applyFilters()"></th>
               <th><input data-col="15" oninput="applyFilters()"></th>
               <th><input data-col="16" oninput="applyFilters()"></th>
+              <th><input data-col="17" oninput="applyFilters()"></th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -224,6 +226,7 @@ INDEX_HTML = r'''
     <div id="addAlert" class="alert alert-danger d-none"></div>
     <div class="mb-2"><label class="form-label">Số CLC</label><input id="add_clc" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="add_code" class="form-control" type="text"></div>
+    <div class="mb-2"><label class="form-label">Mã BC</label><input id="add_bc_code" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="add_declaration_no" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="add_declaration_date" type="date" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Số invoice *</label><input id="add_invoice_no" class="form-control"></div>
@@ -253,6 +256,7 @@ INDEX_HTML = r'''
     <div id="editAlert" class="alert alert-danger d-none"></div>
     <div id="editForm" style="display:none">
       <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="edit_code" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Mã BC</label><input id="edit_bc_code" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="edit_declaration_no" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="edit_declaration_date" type="date" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Số invoice</label><input id="edit_invoice_no" class="form-control"></div>
@@ -440,6 +444,7 @@ function renderRow(a){
 
     <td>${a.clc || ""}</td>
     <td>${a.code || ""}</td>
+    <td>${a.bc_code || ""}</td>
     <td>${a.declaration_no || ""}</td>
     <td>${a.declaration_date || ""}</td>
     <td>${a.invoice_no || ""}</td>
@@ -524,6 +529,7 @@ function updateSortIcons(columnIndex, state) {
 const columnMap = [
   "clc",
   "code",
+  "bc_code",
   "declaration_no",
   "declaration_date",
   "invoice_no",
@@ -607,6 +613,7 @@ function openEditFromRow(id){
   }
 
   document.getElementById('edit_code').value = a.code || '';
+  document.getElementById('edit_bc_code').value = a.bc_code || '';
   document.getElementById('edit_clc').value = a.clc || '';
   document.getElementById('edit_name').value = a.name || '';
   document.getElementById('edit_brand').value = a.brand || '';
@@ -713,6 +720,7 @@ async function doAdd(){
   const payload = {
     clc: document.getElementById('add_clc').value.trim(),
     code: document.getElementById('add_code').value.trim(),
+    bc_code: document.getElementById('add_bc_code').value.trim(),
     declaration_no: document.getElementById('add_declaration_no').value.trim(),
     declaration_date: document.getElementById('add_declaration_date').value,
     invoice_no: document.getElementById('add_invoice_no').value.trim(),
@@ -750,6 +758,7 @@ async function doEdit() {
   const payload = {
     clc: document.getElementById('edit_clc').value.trim(),
     code: document.getElementById('edit_code').value.trim(),
+    bc_code: document.getElementById('edit_bc_code').value.trim(),
     declaration_no: document.getElementById('edit_declaration_no').value.trim(),
     declaration_date: document.getElementById('edit_declaration_date').value,
     invoice_no: document.getElementById('edit_invoice_no').value.trim(),
@@ -1284,7 +1293,7 @@ def api_update_asset(asset_id):
         old_asset = existing.data
 
         allowed_fields = {
-            "clc", "code", "name", "brand", "model", "serial",
+            "clc", "code", "bc_code", "name", "brand", "model", "serial",
             "location", "status", "import_date", "warranty_end", "description",
             "declaration_no", "declaration_date", "invoice_no", "invoice_date",
             "supplier",
