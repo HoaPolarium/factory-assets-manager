@@ -121,7 +121,33 @@ INDEX_HTML = r'''
       opacity: 1;
       font-weight: bold;
     }
-                                                              
+    
+    .guide-overlay{
+      position:fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      background:rgba(0,0,0,0.4);
+      display:none;
+      justify-content:center;
+      align-items:center;
+      z-index:2000;
+    }
+
+    .guide-menu{
+      background:white;
+      padding:30px;
+      border-radius:10px;
+      width:320px;
+      text-align:center;
+    }
+
+    .guide-image-box{
+      background:white;
+      padding:20px;
+      border-radius:10px;
+    }                                                              
   </style>
 </head>
 <body>
@@ -133,9 +159,8 @@ INDEX_HTML = r'''
       <div id="filteredAssets" class="text-muted" style="font-size:14px"></div>
     </div>
     <div>
-      <button class="btn btn-success me-1" onclick="openAdd()">Thêm tài sản</button>
-      <button class="btn btn-danger me-1" onclick="openDelete()">Xóa tài sản</button>
-      <button class="btn btn-outline-primary" onclick="openHist()">Thêm lịch sử tài sản</button>
+      <button class="btn btn-outline-info me-1" onclick="openGuide()">Hướng dẫn sử dụng</button>
+      <button class="btn btn-success ms-2" onclick="openAdd()">Thêm tài sản</button>
       <a class="btn btn-outline-success ms-2" href="/export/excel">Xuất Excel</a>
     </div>
   </div>
@@ -303,7 +328,19 @@ INDEX_HTML = r'''
   </div>
   <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button><button class="btn btn-primary" onclick="doAddHistory()">Lưu</button></div>
 </div></div></div>
+<div id="guideImageOverlay" class="guide-overlay">
 
+  <div class="guide-image-box">
+
+    <img id="guideImage" style="max-width:100%;max-height:80vh">
+
+    <div class="text-center mt-3">
+      <button class="btn btn-secondary" onclick="closeGuideImage()">Đóng</button>
+    </div>
+
+  </div>
+
+</div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const addModal = new bootstrap.Modal(document.getElementById('modalAdd'));
@@ -390,9 +427,15 @@ function renderRow(a){
 
 
   tr.innerHTML = `
-    <td style="text-align:center">
-      <span style="cursor:pointer;font-size:16px"
+    <td style="text-align:center;white-space:nowrap">
+
+      <span style="cursor:pointer;font-size:16px;margin-right:6px"
         onclick="openEditFromRow(${a.id})">🔧</span>
+      <span style="cursor:pointer;font-size:16px";margin-right:6px"
+        onclick="openHistoryFromRow(${a.id})">📘</span>
+      <span style="cursor:pointer;font-size:16px;color:#dc3545"
+        onclick="deleteAssetFromRow(${a.id})">🗑️</span>
+
     </td>
 
     <td>${a.clc || ""}</td>
@@ -590,6 +633,82 @@ function openEditFromRow(id){
   editModal.show();
 }
 
+function openHistoryFromRow(id){
+
+  const a = assetCache.find(x => x.id == id);
+
+  if(!a){
+    alert("Không tìm thấy asset");
+    return;
+  }
+
+  // dùng serial làm identifier cho history
+  hist_target_identifier = a.serial;
+
+  if(!a.serial){
+    alert("Tài sản này chưa có serial nên chưa thể thêm lịch sử.");
+    return;
+  }
+
+  document.getElementById("hist_lookup").value = a.serial;
+
+  document.getElementById("hist_found").innerText =
+    `Serial: ${a.serial} | Tên: ${a.name || ""} | CLC: ${a.clc || ""}`;
+
+  document.getElementById("histAlert").classList.add("d-none");
+
+  histModal.show();
+}
+
+async function deleteAssetFromRow(id){
+
+  const a = assetCache.find(x => x.id == id);
+
+  if(!a){
+    alert("Không tìm thấy asset");
+    return;
+  }
+
+  const msg =
+    "Bạn có chắc muốn xóa tài sản:\n\n" +
+    "Mã tài sản: " + (a.code || "") + "\n" +
+    "Số invoice: " + (a.invoice_no || "") + "\n" +
+    "Serial: " + (a.serial || "") + "\n";
+
+  if(!confirm(msg)) return;
+
+  let url = "/api/assets/delete?";
+
+  if(a.serial){
+    url += "serial=" + encodeURIComponent(a.serial);
+  }else if(a.invoice_no){
+    url += "invoice=" + encodeURIComponent(a.invoice_no);
+  }else{
+    alert("Không xác định được asset để xóa");
+    return;
+  }
+
+  const res = await fetch(url,{method:'DELETE'});
+  const data = await res.json();
+
+  if(!res.ok){
+    alert(data.error || "Xóa thất bại");
+    return;
+  }
+
+  // Xóa khỏi cache
+  assetCache = assetCache.filter(x => x.id != id);
+
+  // Xóa row khỏi table
+  const tr = document.querySelector(`#assetTable tr[data-id="${id}"]`);
+  if(tr) tr.remove();
+
+  updateTotalAssets();
+  updateFilteredAssets();
+
+  alert("Đã xóa tài sản");
+}
+
 async function doAdd(){
   const payload = {
     clc: document.getElementById('add_clc').value.trim(),
@@ -749,6 +868,35 @@ function onHistTypeChange(){
   const t = document.getElementById('hist_type').value;
   document.getElementById('hist_fault_form').style.display = t === 'fault' ? 'block' : 'none';
   document.getElementById('hist_calib_form').style.display = t === 'calib' ? 'block' : 'none';
+}
+
+function openGuide(){
+  document.getElementById("guideOverlay").style.display="flex";
+}
+
+function closeGuide(){
+  document.getElementById("guideOverlay").style.display="none";
+}
+
+function showGuide(type){
+
+  const images = {
+    add: "/static/guide_add.png",
+    edit: "/static/guide_edit.png",
+    history: "/static/guides_history.png",
+    delete: "/static/guide_delete.png"
+  };
+
+  document.getElementById("guideOverlay").style.display="none";
+
+  const img = document.getElementById("guideImage");
+  img.src = images[type];
+
+  document.getElementById("guideImageOverlay").style.display="flex";
+}
+
+function closeGuideImage(){
+  document.getElementById("guideImageOverlay").style.display="none";
 }
 
 async function doAddHistory(){
@@ -1011,6 +1159,30 @@ document.addEventListener('DOMContentLoaded', ()=>{
   initSorting();
 });
 </script>
+<div id="guideOverlay" class="guide-overlay">
+
+  <div class="guide-menu">
+
+    <h5 class="mb-3">Hướng dẫn sử dụng</h5>
+
+    <button class="btn btn-primary w-100 mb-2"
+      onclick="showGuide('add')">Hướng dẫn thêm tài sản</button>
+
+    <button class="btn btn-primary w-100 mb-2"
+      onclick="showGuide('edit')">Hướng dẫn sửa thông tin tài sản</button>
+
+    <button class="btn btn-primary w-100 mb-2"
+      onclick="showGuide('history')">Hướng dẫn thêm lịch sử</button>
+
+    <button class="btn btn-primary w-100 mb-3"
+      onclick="showGuide('delete')">Hướng dẫn xóa tài sản</button>
+
+    <button class="btn btn-secondary w-100"
+      onclick="closeGuide()">Đóng</button>
+
+  </div>
+
+</div>
 </body>
 </html>
 '''
