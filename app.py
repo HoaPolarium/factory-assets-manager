@@ -228,9 +228,9 @@ INDEX_HTML = r'''
     <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="add_code" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Mã BC</label><input id="add_bc_code" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="add_declaration_no" class="form-control"></div>
-    <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="add_declaration_date" type="date" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="add_declaration_date" type="date" class="form-control" autocomplete="off"></div>
     <div class="mb-2"><label class="form-label">Số invoice *</label><input id="add_invoice_no" class="form-control"></div>
-    <div class="mb-2"><label class="form-label">Ngày hóa đơn</label><input id="add_invoice_date" type="date" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Ngày hóa đơn</label><input id="add_invoice_date" type="date" class="form-control" autocomplete="off"></div>
     <div class="mb-2"><label class="form-label">Nhà cung cấp</label><input id="add_supplier" class="form-control"></div>
     <div class="mb-2"><label class="form-label">Tên máy</label><input id="add_name" class="form-control" type="text"></div>
     <div class="mb-2"><label class="form-label">Hãng</label><input id="add_brand" class="form-control" type="text"></div>
@@ -243,8 +243,8 @@ INDEX_HTML = r'''
         <option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option><option>Scrap</option>
       </select>
     </div>
-    <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="add_import" class="form-control" type="date"></div>
-    <div class="mb-2"><label class="form-label">Hạn bảo hành</label><input id="add_warranty" class="form-control" type="date"></div>
+    <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="add_import" class="form-control" type="date" autocomplete="off"></div>
+    <div class="mb-2"><label class="form-label">Hạn bảo hành</label><input id="add_warranty" class="form-control" type="date" autocomplete="off"></div>
   </div>
   <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button><button class="btn btn-primary" onclick="doAdd()">Lưu</button></div>
 </div></div></div>
@@ -258,9 +258,9 @@ INDEX_HTML = r'''
       <div class="mb-2"><label class="form-label">Mã tài sản</label><input id="edit_code" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Mã BC</label><input id="edit_bc_code" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Số tờ khai</label><input id="edit_declaration_no" class="form-control"></div>
-      <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="edit_declaration_date" type="date" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Ngày tờ khai</label><input id="edit_declaration_date" type="date" class="form-control" autocomplete="off"></div>
       <div class="mb-2"><label class="form-label">Số invoice</label><input id="edit_invoice_no" class="form-control"></div>
-      <div class="mb-2"><label class="form-label">Ngày hóa đơn</label><input id="edit_invoice_date" type="date" class="form-control"></div>
+      <div class="mb-2"><label class="form-label">Ngày hóa đơn</label><input id="edit_invoice_date" type="date" class="form-control" autocomplete="off"></div>
       <div class="mb-2"><label class="form-label">Nhà cung cấp</label><input id="edit_supplier" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Số CLC</label><input id="edit_clc" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Tên máy</label><input id="edit_name" class="form-control"></div>
@@ -270,8 +270,8 @@ INDEX_HTML = r'''
       <div class="mb-2"><label class="form-label">Serial</label><input id="edit_serial" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Vị trí</label><input id="edit_location" class="form-control"></div>
       <div class="mb-2"><label class="form-label">Trạng thái</label><select id="edit_status" class="form-select"><option>OK</option><option>NG</option><option>Maintenance/Warranty</option><option>Calib</option><option>Scrap</option></select></div>
-      <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="edit_import" class="form-control" type="date"></div>
-      <div class="mb-2"><label class="form-label">Hạn bảo hành</label><input id="edit_warranty" class="form-control" type="date"></div>  
+      <div class="mb-2"><label class="form-label">Ngày nhập</label><input id="edit_import" class="form-control" type="date" autocomplete="off"></div>
+      <div class="mb-2"><label class="form-label">Hạn bảo hành</label><input id="edit_warranty" class="form-control" type="date" autocomplete="off"></div>  
     </div>
   </div>
   <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button><button class="btn btn-primary" onclick="doEdit()">Lưu</button></div>
@@ -355,7 +355,17 @@ const histModal = new bootstrap.Modal(document.getElementById('modalHist'));
 let hist_target_identifier = null; // will store the identifier (could be clc, code, or serial)
 let assetCache = [];
 
-function openAdd(){ document.getElementById('addAlert').classList.add('d-none'); addModal.show(); }
+function openAdd(){
+
+  document.getElementById('addAlert').classList.add('d-none');
+
+  document.getElementById('add_declaration_date').value='';
+  document.getElementById('add_invoice_date').value='';
+  document.getElementById('add_import').value='';
+  document.getElementById('add_warranty').value='';
+
+  addModal.show();
+}
 function openEdit(){ document.getElementById('editAlert').classList.add('d-none'); editModal.show(); }
 function openDelete(){ delModal.show(); }
 function openHist(){ document.getElementById('histAlert').classList.add('d-none'); document.getElementById('hist_found').innerText=''; hist_target_identifier = null; histModal.show(); }
@@ -624,16 +634,11 @@ function openEditFromRow(id){
   document.getElementById('edit_import').value = a.import_date || '';
   document.getElementById('edit_warranty').value = a.warranty_end || '';
   document.getElementById('edit_description').value = a.description || '';
-
-  // nếu bạn có các field mới
-  if(document.getElementById('edit_invoice_no'))
-    document.getElementById('edit_invoice_no').value = a.invoice_no || '';
-
-  if(document.getElementById('edit_declaration_no'))
-    document.getElementById('edit_declaration_no').value = a.declaration_no || '';
-
-  if(document.getElementById('edit_supplier'))
-    document.getElementById('edit_supplier').value = a.supplier || '';
+  document.getElementById('edit_invoice_no').value = a.invoice_no || '';
+  document.getElementById('edit_declaration_no').value = a.declaration_no || '';
+  document.getElementById('edit_supplier').value = a.supplier || '';
+  document.getElementById('edit_declaration_date').value = a.declaration_date || '';
+  document.getElementById('edit_invoice_date').value = a.invoice_date || '';
 
   document.getElementById('editForm').style.display = 'block';
 
@@ -747,7 +752,10 @@ async function doAdd(){
   assetCache.push(data);  // cập nhật cache
   updateTotalAssets();
   addModal.hide();
-  ['add_clc','add_code','add_name','add_brand','add_model','add_serial','add_location','add_import','add_warranty','add_description'].forEach(id=>document.getElementById(id).value='');
+  ['add_clc','add_code','add_name','add_brand','add_model','add_serial','add_location',
+  'add_import','add_warranty','add_description',
+  'add_declaration_date','add_invoice_date']
+  .forEach(id=>document.getElementById(id).value='');
 }
 
 
@@ -796,6 +804,11 @@ async function doEdit() {
   if (idx !== -1) assetCache[idx] = data;
 
   editModal.hide();
+
+  document.getElementById('edit_declaration_date').value='';
+  document.getElementById('edit_invoice_date').value='';
+  document.getElementById('edit_import').value='';
+  document.getElementById('edit_warranty').value='';
 }
 
 
