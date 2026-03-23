@@ -1768,6 +1768,11 @@ def handle_file_too_large(e):
 def health():
     return "OK", 200
 
+@app.route("/test-mail")
+def test_mail():
+    send_new_asset_email("TEST123", "SERIAL123")
+    return "OK"
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"Run server at http://127.0.0.1:{port}")
