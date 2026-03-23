@@ -16,6 +16,9 @@ from supabase import create_client
 import openpyxl
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
+import smtplib
+from email.mime.text import MIMEText
+import threading
 
 app = Flask(__name__)
 
@@ -32,6 +35,53 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # -----------------------
 # Helpers
 # -----------------------
+def send_new_asset_email(invoice_no, serial):
+    print("=== START SEND MAIL ===")
+
+    sender_email = os.environ.get("EMAIL_SENDER")
+    sender_password = os.environ.get("EMAIL_PASSWORD")
+    receiver_email = os.environ.get("EMAIL_RECEIVER")
+
+    print("SENDER:", sender_email)
+    print("RECEIVER:", receiver_email)
+
+    subject = f"[Asset System] Tài sản mới"
+
+    body = f"""
+Xin chào,
+
+Hệ thống quản lý tài sản thông báo:
+
+Đã có tài sản mới được thêm vào danh sách.
+
+---------------------------------------
+Số Invoice: {invoice_no}
+Số Serial: {serial}
+---------------------------------------
+
+Vui lòng đăng nhập hệ thống để hoàn thiện thông tin.
+"""
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            print("Connecting SMTP...")
+            server.login(sender_email, sender_password)
+            print("Login OK")
+            server.send_message(msg)
+            print("Send OK")
+    except Exception as e:
+        print("❌ Send mail error:", e)
+
+def send_mail_async(invoice, serial):
+    try:
+        send_new_asset_email(invoice, serial)
+    except Exception as e:
+        print("Send mail error:", e)
 
 def transform_asset_for_frontend(a):
     """Map DB asset to frontend shape. index is added in api_list_assets."""
@@ -1272,6 +1322,12 @@ def api_add_asset():
 
         ins = supabase.table("assets").insert(data).execute()
         created = ins.data[0]
+
+        # 🚀 chạy background
+        threading.Thread(
+            target=send_mail_async,
+            args=(data.get("invoice_no", ""), data.get("serial", ""))
+        ).start()
 
         return jsonify(transform_asset_for_frontend(created)), 201
 
