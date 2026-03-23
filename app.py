@@ -68,7 +68,7 @@ Vui lòng đăng nhập hệ thống để hoàn thiện thông tin.
     msg["To"] = receiver_email
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
             print("Connecting SMTP...")
             server.login(sender_email, sender_password)
             print("Login OK")
